@@ -5,22 +5,20 @@ import {
   handleInboundWhatsApp,
 } from "../channels/whatsapp.js";
 import {
+  buildShopifyInstallUrl,
   verifyShopifyHmac,
   exchangeShopifyCode,
   saveShopifyStore,
 } from "../auth/shopify-oauth.js";
 import {
+  buildXeroAuthUrl,
   exchangeXeroCode,
   getXeroTenants,
   saveXeroConnection,
 } from "../auth/xero-oauth.js";
-import { eq } from "drizzle-orm";
-import { db } from "../db/connection.js";
-import { tenants } from "../db/schema.js";
 import type { WhatsAppWebhookPayload } from "@kommand/shared";
 
-// In-memory nonce store (use Redis in production)
-const usedNonces = new Set<string>();
+// In-memory oauth state store (use Redis in production)
 const oauthStates = new Map<string, { tenantId: string; expiresAt: number }>();
 
 export async function webhookRoutes(app: FastifyInstance): Promise<void> {
@@ -116,19 +114,18 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/xero/connect", async (req: FastifyRequest, reply: FastifyReply) => {
     const { tenant_id: tenantId } = req.query as Record<string, string>;
-    if (!tenantId) return reply.status(400).send("Missing tenant_id");
+    if (!tenantId) {return reply.status(400).send("Missing tenant_id");}
 
     const state = crypto.randomUUID();
     oauthStates.set(state, { tenantId, expiresAt: Date.now() + 5 * 60 * 1000 });
 
-    const { buildXeroAuthUrl } = await import("../auth/xero-oauth.js");
     return reply.redirect(buildXeroAuthUrl(state));
   });
 
   app.get("/xero/callback", async (req: FastifyRequest, reply: FastifyReply) => {
     const { code, state } = req.query as Record<string, string>;
 
-    if (!code || !state) return reply.status(400).send("Missing code or state");
+    if (!code || !state) {return reply.status(400).send("Missing code or state");}
 
     const stateData = oauthStates.get(state);
     if (!stateData || stateData.expiresAt < Date.now()) {
@@ -144,7 +141,7 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       const xeroTenants = await getXeroTenants(accessToken);
       const firstOrg = xeroTenants[0];
 
-      if (!firstOrg) throw new Error("No Xero orgs found");
+      if (!firstOrg) {throw new Error("No Xero orgs found");}
 
       await saveXeroConnection(
         tenantId,
@@ -161,9 +158,4 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       return reply.redirect(`${config.DASHBOARD_URL}/settings?error=xero_oauth_failed`);
     }
   });
-}
-
-function buildShopifyInstallUrl(shop: string, state: string): string {
-  const { buildShopifyInstallUrl: build } = require("../auth/shopify-oauth.js");
-  return build(shop, state);
 }

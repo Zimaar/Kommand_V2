@@ -65,7 +65,7 @@ export async function getXeroTenants(accessToken: string): Promise<
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
-  if (!res.ok) throw new Error(`Failed to fetch Xero tenants: ${res.status}`);
+  if (!res.ok) {throw new Error(`Failed to fetch Xero tenants: ${res.status}`);}
 
   const data = await res.json() as Array<{ tenantId: string; tenantName: string }>;
   return data;

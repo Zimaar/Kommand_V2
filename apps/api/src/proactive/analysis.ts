@@ -33,7 +33,7 @@ Store any new patterns or observations in memory for future reference.`;
 
   const result = await runAgent(analysisPrompt, tenantId, "proactive");
 
-  if (result.text.includes("NO_ALERT")) return;
+  if (result.text.includes("NO_ALERT")) {return;}
 
   // Find owner's WhatsApp number
   const channelRows = await db

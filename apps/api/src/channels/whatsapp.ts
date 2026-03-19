@@ -29,7 +29,7 @@ export async function handleInboundWhatsApp(
   for (const entry of payload.entry) {
     for (const change of entry.changes) {
       const { messages: inboundMsgs } = change.value;
-      if (!inboundMsgs || inboundMsgs.length === 0) continue;
+      if (!inboundMsgs || inboundMsgs.length === 0) {continue;}
 
       for (const msg of inboundMsgs) {
         // Only handle text and button replies
@@ -44,7 +44,7 @@ export async function handleInboundWhatsApp(
             null;
         }
 
-        if (!text) continue;
+        if (!text) {continue;}
 
         const phoneNumber = msg.from;
 
@@ -79,7 +79,7 @@ export async function handleInboundWhatsApp(
           .where(eq(messages.channelMsgId, msg.id))
           .limit(1);
 
-        if (existing[0]) continue; // Already processed
+        if (existing[0]) {continue;} // Already processed
 
         // Store inbound message
         await db.insert(messages).values({
@@ -214,7 +214,7 @@ async function markMessageRead(messageId: string): Promise<void> {
 }
 
 function splitMessage(text: string, maxLength: number): string[] {
-  if (text.length <= maxLength) return [text];
+  if (text.length <= maxLength) {return [text];}
 
   const chunks: string[] = [];
   let remaining = text;
@@ -227,6 +227,6 @@ function splitMessage(text: string, maxLength: number): string[] {
     remaining = remaining.slice(cutAt).trim();
   }
 
-  if (remaining.length > 0) chunks.push(remaining);
+  if (remaining.length > 0) {chunks.push(remaining);}
   return chunks;
 }

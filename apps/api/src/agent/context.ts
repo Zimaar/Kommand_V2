@@ -89,9 +89,9 @@ export async function buildContext(tenantId: string): Promise<AgentContext> {
     "generate_file",
     "memory",
   ];
-  if (storeRows.length > 0) connectedPlatforms.push("shopify_api");
-  if (connectionRows.length > 0) connectedPlatforms.push("xero_api");
-  if (tenantRow.phone) connectedPlatforms.push("send_comms");
+  if (storeRows.length > 0) {connectedPlatforms.push("shopify_api");}
+  if (connectionRows.length > 0) {connectedPlatforms.push("xero_api");}
+  if (tenantRow.phone) {connectedPlatforms.push("send_comms");}
 
   // Conversation history (reversed to chronological order)
   const conversationHistory: ConversationMessage[] = historyRows

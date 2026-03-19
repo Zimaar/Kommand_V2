@@ -45,7 +45,7 @@ export async function scheduleProactiveRuns(): Promise<void> {
     .where(and());
 
   for (const tenant of activeTenants) {
-    if (!["growth", "pro"].includes(tenant.plan)) continue;
+    if (!["growth", "pro"].includes(tenant.plan)) {continue;}
 
     await proactiveQueue.add(
       "analyze",

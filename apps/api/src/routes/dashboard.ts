@@ -17,7 +17,7 @@ async function resolveTenant(req: FastifyRequest): Promise<string> {
   // In production: verify Clerk JWT from Authorization header
   // For now: read tenant_id from header (replace with proper Clerk verification)
   const tenantId = req.headers["x-tenant-id"] as string;
-  if (!tenantId) throw new UnauthorizedError("Missing tenant ID");
+  if (!tenantId) {throw new UnauthorizedError("Missing tenant ID");}
   return tenantId;
 }
 
@@ -33,7 +33,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         .limit(1);
 
       const tenant = rows[0];
-      if (!tenant) throw new NotFoundError("Tenant");
+      if (!tenant) {throw new NotFoundError("Tenant");}
 
       const storeRows = await db
         .select()
@@ -95,8 +95,8 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       const { timezone, currency, ...prefChanges } = parsed.data;
 
       const updates: Record<string, unknown> = { updatedAt: new Date() };
-      if (timezone) updates["timezone"] = timezone;
-      if (currency) updates["currency"] = currency;
+      if (timezone) {updates["timezone"] = timezone;}
+      if (currency) {updates["currency"] = currency;}
 
       const rows = await db
         .select({ preferences: tenants.preferences })

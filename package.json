@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
-    "lint": "turbo run lint",
+    "lint": "eslint \"apps/api/src/**/*.ts\" \"packages/shared/src/**/*.ts\" \"scripts/**/*.ts\"",
     "typecheck": "turbo run typecheck",
     "db:generate": "npm run db:generate --workspace=apps/api",
     "db:migrate": "npm run db:migrate --workspace=apps/api",
@@ -20,10 +20,15 @@
     "docker:reset": "docker compose down -v && docker compose up -d --wait"
   },
   "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "eslint": "^8.57.1",
+    "tsx": "^4.19.0",
     "turbo": "^2.3.0",
     "typescript": "^5.6.0",
-    "@types/node": "^20.0.0",
-    "tsx": "^4.19.0"
+    "typescript-eslint": "^8.57.1"
   },
   "engines": {
     "node": ">=20.0.0"
