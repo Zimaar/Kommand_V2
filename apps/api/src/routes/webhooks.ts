@@ -3,18 +3,13 @@ import { config } from "../config.js";
 import { verifyWhatsAppSignature, whatsappAdapter } from "../channels/whatsapp.js";
 import { processInboundMessage, registerAdapter } from "../channels/pipeline.js";
 import {
-  buildShopifyInstallUrl,
-  verifyShopifyHmac,
-  exchangeShopifyCode,
-  saveShopifyStore,
-} from "../auth/shopify-oauth.js";
-import {
   buildXeroAuthUrl,
   exchangeXeroCode,
   getXeroTenants,
   saveXeroConnection,
 } from "../auth/xero-oauth.js";
-// In-memory oauth state store (use Redis in production)
+
+// In-memory oauth state store for Xero (TODO M7: move to Redis)
 const oauthStates = new Map<string, { tenantId: string; expiresAt: number }>();
 
 // Register channel adapters
@@ -55,59 +50,6 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       });
     }
   );
-
-  // ─── Shopify OAuth ──────────────────────────────────────────────────────────
-
-  // Initiate OAuth (redirects to Shopify)
-  app.get("/shopify/install", async (req: FastifyRequest, reply: FastifyReply) => {
-    const { shop, tenant_id: tenantId } = req.query as Record<string, string>;
-
-    if (!shop || !tenantId) {
-      return reply.status(400).send("Missing shop or tenant_id");
-    }
-
-    const state = crypto.randomUUID();
-    oauthStates.set(state, { tenantId, expiresAt: Date.now() + 5 * 60 * 1000 });
-
-    const redirectUrl = buildShopifyInstallUrl(shop, state);
-    return reply.redirect(redirectUrl);
-  });
-
-  // OAuth callback
-  app.get("/shopify/callback", async (req: FastifyRequest, reply: FastifyReply) => {
-    const params = req.query as Record<string, string>;
-    const { shop, code, state, hmac, timestamp } = params;
-
-    if (!shop || !code || !state || !hmac || !timestamp) {
-      return reply.status(400).send("Missing required params");
-    }
-
-    // Verify HMAC
-    if (!verifyShopifyHmac(params, hmac)) {
-      return reply.status(401).send("Invalid HMAC");
-    }
-
-    // Verify state
-    const stateData = oauthStates.get(state);
-    if (!stateData || stateData.expiresAt < Date.now()) {
-      oauthStates.delete(state);
-      return reply.status(400).send("Invalid or expired state");
-    }
-    oauthStates.delete(state);
-
-    const { tenantId } = stateData;
-
-    try {
-      const accessToken = await exchangeShopifyCode(shop, code);
-      const scopes = config.SHOPIFY_SCOPES.split(",");
-      await saveShopifyStore(tenantId, shop, accessToken, scopes);
-
-      return reply.redirect(`${config.DASHBOARD_URL}/onboarding?step=whatsapp&connected=shopify`);
-    } catch (error) {
-      console.error("Shopify OAuth error:", error);
-      return reply.redirect(`${config.DASHBOARD_URL}/onboarding?error=shopify_oauth_failed`);
-    }
-  });
 
   // ─── Xero OAuth ─────────────────────────────────────────────────────────────
 

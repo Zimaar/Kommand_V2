@@ -47,7 +47,7 @@ const envSchema = z.object({
   SHOPIFY_SCOPES: z
     .string()
     .default(
-      "read_orders,write_orders,read_products,write_products,read_inventory,write_inventory,read_customers,read_analytics"
+      "read_orders,write_orders,read_products,write_products,read_inventory,write_inventory,read_customers,read_analytics,read_discounts,write_discounts"
     ),
 
   // Xero

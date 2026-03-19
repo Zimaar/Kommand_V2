@@ -7,6 +7,7 @@ import { config } from "./config.js";
 import { AppError, sendError } from "./utils/errors.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
+import { authRoutes } from "./routes/auth.js";
 
 const startedAt = Date.now();
 
@@ -64,6 +65,7 @@ app.get("/api/health", async () => ({
   uptime: Math.floor((Date.now() - startedAt) / 1000),
 }));
 
+await app.register(authRoutes, { prefix: "/auth" });
 await app.register(webhookRoutes, { prefix: "/webhooks" });
 await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
 

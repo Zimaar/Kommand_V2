@@ -1,13 +1,12 @@
 import crypto from "crypto";
-import { eq, and } from "drizzle-orm";
 import { db } from "../db/connection.js";
-import { tenants, stores } from "../db/schema.js";
+import { stores } from "../db/schema.js";
 import { encryptToken } from "./encryption.js";
 import { config } from "../config.js";
 
 export function buildShopifyInstallUrl(shop: string, state: string): string {
   const scopes = config.SHOPIFY_SCOPES;
-  const redirectUri = `${config.API_URL}/webhooks/shopify/callback`;
+  const redirectUri = `${config.API_URL}/auth/shopify/callback`;
 
   const params = new URLSearchParams({
     client_id: config.SHOPIFY_API_KEY,
