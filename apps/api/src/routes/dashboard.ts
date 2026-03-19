@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import {
   tenants,
@@ -11,6 +11,7 @@ import {
 } from "../db/schema.js";
 import { UpdatePreferencesSchema } from "@kommand/shared";
 import { sendError, UnauthorizedError, NotFoundError } from "../utils/errors.js";
+import { sendTextToPhone } from "../channels/whatsapp.js";
 
 // Middleware: resolve tenant from Clerk JWT
 async function resolveTenant(req: FastifyRequest): Promise<string> {
@@ -115,20 +116,32 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     }
   });
 
-  // POST /api/dashboard/whatsapp/link — link a WhatsApp number to a tenant
+  // POST /api/channels/whatsapp/link — link a WhatsApp number to a tenant
   app.post("/whatsapp/link", async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const tenantId = await resolveTenant(req);
-      const { phone } = req.body as { phone?: string };
+      const { phone: rawPhone } = req.body as { phone?: string };
 
-      if (!phone || !phone.startsWith("+")) {
-        return reply.status(400).send({ error: "Phone must be E.164 format (e.g. +971501234567)" });
+      // Normalize to E.164: strip everything except digits, prepend +
+      const digits = (rawPhone ?? "").replace(/\D/g, "");
+      if (digits.length < 7) {
+        return reply.status(400).send({ error: "Invalid phone number" });
       }
+      const phone = `+${digits}`;
+
+      // Fetch tenant name for welcome message
+      const tenantRow = await db
+        .select({ name: tenants.name })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1)
+        .then((r) => r[0]);
+      const name = tenantRow?.name ?? "there";
 
       // Update tenant phone
       await db.update(tenants).set({ phone, updatedAt: new Date() }).where(eq(tenants.id, tenantId));
 
-      // Create channel record
+      // Upsert channel record
       await db
         .insert(channels)
         .values({ tenantId, type: "whatsapp", identifier: phone, isActive: true })
@@ -137,7 +150,36 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
           set: { isActive: true },
         });
 
+      // Send welcome message (fire-and-forget — don't fail the link if WhatsApp is misconfigured)
+      sendTextToPhone(
+        phone,
+        `Hey ${name}! 👋 Kommand is connected. Try asking me: *How's my store doing?*`
+      ).catch((err) => {
+        console.warn("[whatsapp/link] Welcome message failed:", err);
+      });
+
       return reply.send({ success: true, phone });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // DELETE /api/channels/whatsapp — unlink WhatsApp number
+  app.delete("/whatsapp", async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await resolveTenant(req);
+
+      await db
+        .update(channels)
+        .set({ isActive: false })
+        .where(and(eq(channels.tenantId, tenantId), eq(channels.type, "whatsapp")));
+
+      await db
+        .update(tenants)
+        .set({ phone: null, updatedAt: new Date() })
+        .where(eq(tenants.id, tenantId));
+
+      return reply.send({ success: true });
     } catch (error) {
       return sendError(reply, error);
     }

@@ -69,7 +69,11 @@ async function processSingleMessage(
   // 3. Look up tenant by channel identifier
   const tenantId = await resolveTenant(channelType as ChannelType, parsed.from);
   if (!tenantId) {
-    console.warn(`[pipeline] No tenant found for ${channelType}:${parsed.from}`);
+    if (adapter.notifyUnlinked) {
+      await adapter.notifyUnlinked(parsed.from).catch((err) => {
+        console.warn(`[pipeline] Failed to notify unlinked sender: ${err}`);
+      });
+    }
     return;
   }
 

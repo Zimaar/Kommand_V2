@@ -28,4 +28,7 @@ export interface ChannelAdapter {
 
   /** Mark a message as read (blue checkmarks). */
   markAsRead?(messageId: string): Promise<void>;
+
+  /** Notify an unregistered sender that their number isn't linked to any account. */
+  notifyUnlinked?(from: string): Promise<void>;
 }

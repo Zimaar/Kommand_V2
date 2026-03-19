@@ -169,6 +169,13 @@ export const whatsappAdapter: ChannelAdapter = {
       message_id: messageId,
     });
   },
+
+  async notifyUnlinked(from: string): Promise<void> {
+    await sendTextToPhone(
+      from,
+      "This number isn't linked to a Kommand account. Set up at kommand.dev"
+    );
+  },
 };
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
@@ -228,6 +235,16 @@ async function resolveOwnerPhone(tenantId: string): Promise<string | null> {
     console.warn(`[whatsapp] No active WhatsApp channel for tenant ${tenantId}`);
   }
   return phone;
+}
+
+/** Send a plain text message directly to a phone number (no tenant lookup). */
+export async function sendTextToPhone(to: string, text: string): Promise<void> {
+  await callWhatsAppApi({
+    messaging_product: "whatsapp",
+    to,
+    type: "text",
+    text: { body: text },
+  });
 }
 
 async function callWhatsAppApi(body: Record<string, unknown>): Promise<void> {
