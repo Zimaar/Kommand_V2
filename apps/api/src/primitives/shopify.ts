@@ -28,7 +28,7 @@ export const shopifyDef: PrimitiveDefinition = {
       },
       variables: {
         type: "object",
-        description: "GraphQL variables, or REST request body for POST/PUT.",
+        description: "GraphQL variables, REST request body for POST/PUT, or query params for GET.",
       },
     },
     required: ["method", "query"],
@@ -107,6 +107,12 @@ async function callShopify(
     url = `${baseUrl}/${path}`;
 
     if (method === "rest_get") {
+      if (variables && Object.keys(variables).length > 0) {
+        const qs = new URLSearchParams(
+          Object.entries(variables).map(([k, v]) => [k, String(v)])
+        );
+        url = `${url}?${qs.toString()}`;
+      }
       init = { method: "GET", headers };
     } else if (method === "rest_delete") {
       init = { method: "DELETE", headers };
@@ -129,12 +135,15 @@ async function callShopify(
   }
 
   // Handle rate limiting — wait Retry-After, retry once
-  if (response.status === 429 && !isRetry) {
-    const retryAfterHeader = response.headers.get("Retry-After");
-    const waitSeconds = retryAfterHeader ? parseFloat(retryAfterHeader) : 2;
-    const waitMs = Math.min(isNaN(waitSeconds) ? 2000 : waitSeconds * 1000, 30_000);
-    await sleep(waitMs);
-    return callShopify(method, domain, query, variables, accessToken, true);
+  if (response.status === 429) {
+    if (!isRetry) {
+      const retryAfterHeader = response.headers.get("Retry-After");
+      const waitSeconds = retryAfterHeader ? parseFloat(retryAfterHeader) : 2;
+      const waitMs = Math.min(isNaN(waitSeconds) ? 2000 : waitSeconds * 1000, 30_000);
+      await sleep(waitMs);
+      return callShopify(method, domain, query, variables, accessToken, true);
+    }
+    return { success: false, error: "Shopify rate limit exceeded after retry. Please try again in a moment." };
   }
 
   // Parse response body

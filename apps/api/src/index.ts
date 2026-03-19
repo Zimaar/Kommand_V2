@@ -8,6 +8,7 @@ import { AppError, sendError } from "./utils/errors.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { authRoutes } from "./routes/auth.js";
+import { redis } from "./lib/redis.js";
 
 const startedAt = Date.now();
 
@@ -74,6 +75,7 @@ await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
 async function shutdown(signal: string): Promise<void> {
   app.log.info(`Received ${signal}, shutting down gracefully…`);
   await app.close();
+  await redis.quit();
   process.exit(0);
 }
 
@@ -93,6 +95,7 @@ process.on("SIGINT", () => {
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 try {
+  await redis.connect();
   await app.listen({ port: config.PORT, host: "0.0.0.0" });
   app.log.info(`Kommand API running on port ${config.PORT}`);
 } catch (err) {

@@ -126,10 +126,11 @@ export async function runAgent(
             latencyMs,
           });
 
-          // Wrap business data in XML tags for prompt-injection defence (SECURITY.md)
+          // Wrap business data in XML tags for prompt-injection defence (SECURITY.md).
+          // Escape < and > so a malicious API response can't close the wrapper tag.
           const raw = JSON.stringify(result);
           const content = BUSINESS_DATA_PRIMITIVES.has(block.name)
-            ? `<business_data source="${block.name}">${raw}</business_data>`
+            ? `<business_data source="${block.name}">${raw.replace(/</g, "\\u003c").replace(/>/g, "\\u003e")}</business_data>`
             : raw;
 
           return {
