@@ -54,4 +54,8 @@ export const mockAdapter: ChannelAdapter = {
   async markAsRead(messageId: string): Promise<void> {
     console.log(`[mock] marked read: ${messageId}`);
   },
+
+  async notifyUnlinked(from: string): Promise<void> {
+    console.log(`[mock] unlinked sender: ${from} — would send "not linked" reply`);
+  },
 };

@@ -243,7 +243,7 @@ export async function sendTextToPhone(to: string, text: string): Promise<void> {
     messaging_product: "whatsapp",
     to,
     type: "text",
-    text: { body: text },
+    text: { body: formatForWhatsApp(text) },
   });
 }
 

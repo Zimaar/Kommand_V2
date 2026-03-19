@@ -124,7 +124,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
 
       // Normalize to E.164: strip everything except digits, prepend +
       const digits = (rawPhone ?? "").replace(/\D/g, "");
-      if (digits.length < 7) {
+      if (digits.length < 8) {
         return reply.status(400).send({ error: "Invalid phone number" });
       }
       const phone = `+${digits}`;
