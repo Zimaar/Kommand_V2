@@ -123,14 +123,7 @@ export const UpdatePreferencesSchema = z.object({
   currency: z.string().optional(),
 });
 
-// ─── Inferred types ──────────────────────────────────────────────────────────
+// ─── Inferred types (only those not already in types.ts) ─────────────────────
 
-export type ShopifyApiInput = z.infer<typeof ShopifyApiInputSchema>;
-export type XeroApiInput = z.infer<typeof XeroApiInputSchema>;
-export type RunCodeInput = z.infer<typeof RunCodeInputSchema>;
-export type WebSearchInput = z.infer<typeof WebSearchInputSchema>;
-export type GenerateFileInput = z.infer<typeof GenerateFileInputSchema>;
-export type SendCommsInput = z.infer<typeof SendCommsInputSchema>;
-export type MemoryInput = z.infer<typeof MemoryInputSchema>;
 export type WhatsAppWebhookPayload = z.infer<typeof WhatsAppTextMessageSchema>;
 export type UpdatePreferences = z.infer<typeof UpdatePreferencesSchema>;
