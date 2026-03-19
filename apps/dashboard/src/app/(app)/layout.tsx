@@ -1,18 +1,21 @@
-import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
-import { LayoutDashboard, Plug, SlidersHorizontal, MessageSquare } from "lucide-react";
-import { NavItem } from "@/components/nav-item";
+import { SidebarNav } from "@/components/sidebar-nav";
 
-const navItems = [
-  { href: "/overview", label: "Overview", icon: LayoutDashboard },
-  { href: "/connections", label: "Connections", icon: Plug },
-  { href: "/preferences", label: "Preferences", icon: SlidersHorizontal },
-  { href: "/chat-log", label: "Chat Log", icon: MessageSquare },
-];
+const hasClerkKey = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
+async function getDisplayName(): Promise<string> {
+  if (!hasClerkKey) { return "Account"; }
+  try {
+    const { currentUser } = await import("@clerk/nextjs/server");
+    const user = await currentUser();
+    return user?.firstName ?? user?.emailAddresses[0]?.emailAddress ?? "Account";
+  } catch {
+    return "Account";
+  }
+}
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const user = await currentUser();
-  const displayName = user?.firstName ?? user?.emailAddresses[0]?.emailAddress ?? "Account";
+  const displayName = await getDisplayName();
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -26,17 +29,13 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <span className="font-semibold text-gray-900 tracking-tight">Kommand</span>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 px-3 py-4 space-y-0.5">
-          {navItems.map(({ href, label, icon: Icon }) => (
-            <NavItem key={href} href={href} label={label} icon={Icon} />
-          ))}
-        </nav>
+        {/* Nav — icons imported in client component to avoid RSC serialization error */}
+        <SidebarNav />
 
         {/* Footer */}
         <div className="px-4 py-4 border-t border-gray-100">
           <div className="flex items-center gap-2.5">
-            <UserButton afterSignOutUrl="/" />
+            {hasClerkKey && <UserButton afterSignOutUrl="/" />}
             <span className="text-sm text-gray-600 truncate">{displayName}</span>
           </div>
         </div>
@@ -55,4 +54,3 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     </div>
   );
 }
-

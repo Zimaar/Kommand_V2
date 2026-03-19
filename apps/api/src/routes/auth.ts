@@ -74,7 +74,9 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         app.log.warn({ err, shop }, "Shopify webhook registration failed (non-fatal)");
       });
 
-      return reply.redirect(`${config.DASHBOARD_URL}/onboarding?step=whatsapp&connected=shopify`);
+      return reply.redirect(
+        `${config.DASHBOARD_URL}/onboarding?step=2&connected=shopify&shop=${encodeURIComponent(shop)}`
+      );
     } catch (error) {
       app.log.error(error, "Shopify OAuth callback error");
       return reply.redirect(`${config.DASHBOARD_URL}/onboarding?error=shopify_oauth_failed`);

@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { eq, desc, and } from "drizzle-orm";
 import { db } from "../db/connection.js";
@@ -12,6 +13,8 @@ import {
 import { UpdatePreferencesSchema } from "@kommand/shared";
 import { sendError, UnauthorizedError, NotFoundError } from "../utils/errors.js";
 import { sendTextToPhone } from "../channels/whatsapp.js";
+import { buildShopifyInstallUrl } from "../auth/shopify-oauth.js";
+import { redis } from "../lib/redis.js";
 
 // Middleware: resolve tenant from Clerk JWT
 async function resolveTenant(req: FastifyRequest): Promise<string> {
@@ -264,6 +267,33 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(accountingConnections.id, connectionId));
 
       return reply.send({ success: true });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // POST /api/dashboard/connections/shopify/initiate — start Shopify OAuth
+  // Returns { url } so the client can redirect; does NOT redirect server-side.
+  app.post("/connections/shopify/initiate", async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await resolveTenant(req);
+      const { shop: rawShop } = req.body as { shop?: string };
+
+      if (!rawShop) {
+        return reply.status(400).send({ error: "Missing shop domain" });
+      }
+
+      const shop = rawShop.trim().toLowerCase();
+
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(shop)) {
+        return reply.status(400).send({ error: "Invalid shop domain — use format: yourstore.myshopify.com" });
+      }
+
+      const state = crypto.randomUUID();
+      await redis.set(`oauth:nonce:${state}`, tenantId, "EX", 300);
+
+      const url = buildShopifyInstallUrl(shop, state);
+      return reply.send({ url });
     } catch (error) {
       return sendError(reply, error);
     }
