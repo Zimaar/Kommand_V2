@@ -142,8 +142,11 @@ export interface PrimitiveCallLog {
 
 export interface AgentResponse {
   text: string;
+  files?: Array<{ url: string; filename: string }>;
+  agentRunId: string;
   iterations: number;
   tokensUsed: number;
+  latencyMs: number;
   primitivesCalled: PrimitiveCallLog[];
 }
 

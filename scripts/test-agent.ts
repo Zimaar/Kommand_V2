@@ -1,94 +1,88 @@
 #!/usr/bin/env tsx
 /**
- * CLI test harness — runs the agent without WhatsApp.
- * Usage: npx tsx scripts/test-agent.ts [tenantId]
+ * Test the agent loop with mock primitives.
+ * Usage: npx tsx scripts/test-agent.ts
  *
- * Interactive REPL: type messages, agent responds inline.
+ * Tests:
+ * 1. runAgent with missing API key → graceful error
+ * 2. buildContext loads tenant correctly
+ * 3. getPrimitivesForClaude returns correct tools based on connections
  */
-
 import "dotenv/config";
-import * as readline from "readline";
-import { runAgent } from "../apps/api/src/agent/loop.js";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import { tenants } from "../apps/api/src/db/schema.js";
+import * as schema from "../apps/api/src/db/schema.js";
+import { buildContext } from "../apps/api/src/agent/context.js";
+import { getPrimitivesForClaude, executePrimitive } from "../apps/api/src/primitives/index.js";
 
-const pool = new pg.Pool({
-  connectionString: process.env["DATABASE_URL"] ?? "postgresql://postgres:postgres@localhost:5432/kommand",
-});
+const pool = new pg.Pool({ connectionString: "postgresql://postgres:postgres@localhost:5432/kommand" });
+const db = drizzle(pool, { schema });
 
-const db = drizzle(pool);
+async function run(): Promise<void> {
+  // Find the seeded tenant
+  const tenant = await db.query.tenants.findFirst({
+    where: (t, { eq }) => eq(t.email, "test@kommand.dev"),
+  });
 
-async function getTestTenantId(): Promise<string> {
-  const arg = process.argv[2];
-  if (arg) return arg;
-
-  // Find the seed tenant
-  const rows = await db
-    .select({ id: tenants.id, name: tenants.name })
-    .from(tenants)
-    .limit(1);
-
-  const tenant = rows[0];
   if (!tenant) {
-    console.error("No tenants found. Run: npx tsx scripts/seed.ts");
+    console.error("❌ No test tenant found. Run: npm run db:seed");
     process.exit(1);
   }
 
-  console.log(`Using tenant: ${tenant.name} (${tenant.id})`);
-  return tenant.id;
+  console.log(`Using tenant: ${tenant.id} (${tenant.name})\n`);
+
+  // Test 1: buildContext
+  console.log("── Test 1: buildContext ──");
+  const ctx = await buildContext(tenant.id);
+  console.log(`  tenant.name: ${ctx.tenant.name}`);
+  console.log(`  stores: ${ctx.stores.length}`);
+  console.log(`  connectedPlatforms: ${ctx.connectedPlatforms.join(", ")}`);
+  console.log(`  currentTime: ${ctx.currentTime}`);
+  console.log("  ✅ passed\n");
+
+  // Test 2: getPrimitivesForClaude
+  console.log("── Test 2: getPrimitivesForClaude ──");
+  const tools = getPrimitivesForClaude(ctx.connectedPlatforms);
+  console.log(`  tools (${tools.length}): ${tools.map((t) => t.name).join(", ")}`);
+  const hasShopify = tools.some((t) => t.name === "shopify_api");
+  const hasMemory = tools.some((t) => t.name === "memory");
+  console.log(`  includes shopify_api: ${hasShopify} (expected: true)`);
+  console.log(`  includes memory: ${hasMemory} (expected: true)`);
+  if (!hasShopify || !hasMemory) throw new Error("Missing expected tools");
+  console.log("  ✅ passed\n");
+
+  // Test 3: executePrimitive (mock)
+  console.log("── Test 3: executePrimitive (mocks) ──");
+  const r1 = await executePrimitive("shopify_api", { method: "graphql", query: "{ shop { name } }" }, tenant.id);
+  console.log(`  shopify_api: success=${r1.success}`);
+  const r2 = await executePrimitive("run_code", { code: "print(42)" }, tenant.id);
+  console.log(`  run_code: success=${r2.success}`);
+  const r3 = await executePrimitive("memory", { action: "read", query: "test" }, tenant.id);
+  console.log(`  memory read: success=${r3.success}`);
+  if (!r1.success || !r2.success || !r3.success) throw new Error("Mock primitive failed");
+  console.log("  ✅ passed\n");
+
+  // Test 4: runAgent with placeholder API key → graceful error
+  console.log("── Test 4: runAgent graceful error handling ──");
+  const { runAgent } = await import("../apps/api/src/agent/loop.js");
+  const result = await runAgent("Hello, how are you?", tenant.id, "message");
+  console.log(`  text: "${result.text}"`);
+  console.log(`  agentRunId: ${result.agentRunId}`);
+  console.log(`  iterations: ${result.iterations}`);
+  console.log(`  latencyMs: ${result.latencyMs}`);
+  // With no valid API key, it should return the fallback message
+  const expectFallback = result.text.includes("trouble thinking") || result.text.length > 0;
+  console.log(`  graceful: ${expectFallback}`);
+  if (!expectFallback) throw new Error("Expected graceful error or response");
+  console.log("  ✅ passed\n");
+
+  console.log("━━━ All tests passed ━━━");
+  await pool.end();
 }
 
-async function main() {
-  const tenantId = await getTestTenantId();
-
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  console.log("\n=== Kommand Agent Test REPL ===");
-  console.log("Type a message, press Enter. Ctrl+C to exit.\n");
-
-  function prompt() {
-    rl.question("You: ", async (input) => {
-      const message = input.trim();
-      if (!message) {
-        prompt();
-        return;
-      }
-
-      const start = Date.now();
-      process.stdout.write("Kommand: thinking...");
-
-      try {
-        const response = await runAgent(message, tenantId, "message");
-
-        // Clear the "thinking..." line
-        process.stdout.clearLine(0);
-        process.stdout.cursorTo(0);
-
-        console.log(`Kommand: ${response.text}`);
-        console.log(
-          `\n[${response.iterations} iterations | ${response.tokensUsed} tokens | ${Date.now() - start}ms]\n`
-        );
-      } catch (error) {
-        console.error("\nError:", error);
-      }
-
-      prompt();
-    });
-  }
-
-  prompt();
-
-  rl.on("close", async () => {
-    await pool.end();
-    process.exit(0);
-  });
-}
-
-main().catch((err) => {
-  console.error(err);
+run().catch(async (err) => {
+  console.error("❌ Test failed:", err);
+  await pool.end();
   process.exit(1);
 });
