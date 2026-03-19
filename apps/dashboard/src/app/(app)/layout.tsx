@@ -1,7 +1,7 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { UserButton } from "@clerk/nextjs";
 import { LayoutDashboard, Plug, SlidersHorizontal, MessageSquare } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { NavItem } from "@/components/nav-item";
 
 const navItems = [
   { href: "/overview", label: "Overview", icon: LayoutDashboard },
@@ -46,7 +46,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Top bar */}
         <header className="h-14 border-b border-gray-200 bg-white flex items-center px-6 shrink-0">
-          <StoreName />
+          <p className="text-sm font-medium text-gray-500">Dashboard</p>
         </header>
 
         {/* Content */}
@@ -56,35 +56,3 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   );
 }
 
-function NavItem({
-  href,
-  label,
-  icon: Icon,
-}: {
-  href: string;
-  label: string;
-  icon: React.ComponentType<{ className?: string }>;
-}) {
-  // Using a plain <a> so it works as a server component without usePathname.
-  // Active highlighting is handled via CSS :where([aria-current=page]).
-  return (
-    <a
-      href={href}
-      className={cn(
-        "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 transition-colors",
-        "hover:bg-accent hover:text-accent-foreground",
-        "[&[data-active]]:bg-accent [&[data-active]]:text-primary"
-      )}
-    >
-      <Icon className="w-4 h-4 shrink-0" />
-      {label}
-    </a>
-  );
-}
-
-async function StoreName() {
-  // Best-effort: show store name from API if available, else show nothing.
-  return (
-    <p className="text-sm font-medium text-gray-500">Dashboard</p>
-  );
-}
