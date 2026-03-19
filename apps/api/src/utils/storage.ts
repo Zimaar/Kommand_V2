@@ -69,8 +69,12 @@ export async function uploadFile(
     throw new Error(`URL signing failed (${signRes.status}): ${await signRes.text()}`);
   }
 
-  const { signedURL } = (await signRes.json()) as { signedURL: string };
-  const url = `${SUPABASE_URL}/storage/v1${signedURL}`;
+  const signBody = (await signRes.json()) as { signedURL?: string };
+  if (!signBody.signedURL) {
+    throw new Error(`URL signing returned no signedURL: ${JSON.stringify(signBody)}`);
+  }
+  // signedURL is already a full path like /storage/v1/object/sign/...
+  const url = `${SUPABASE_URL}${signBody.signedURL}`;
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000);
 
   // Record in DB

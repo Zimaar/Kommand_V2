@@ -154,8 +154,8 @@ async function runCode(
   // First attempt
   try {
     return await runInSandbox(parsed.data.code, e2bKey, tenantId, runId);
-  } catch {
-    // E2B API error — retry once
+  } catch (err) {
+    console.error("[run-code] E2B attempt 1 failed, retrying:", err);
   }
 
   // Second attempt
