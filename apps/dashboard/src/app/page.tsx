@@ -1,5 +1,9 @@
 import Link from "next/link";
 
+export const dynamic = "force-static";
+
+const YEAR = new Date().getFullYear();
+
 // ─── Data ────────────────────────────────────────────────────────────────────
 
 const PLANS = [
@@ -356,7 +360,7 @@ function NotAChatbot(): React.ReactElement {
           {steps.map((step, i) => (
             <div key={step.label} className="relative">
               {i < steps.length - 1 && (
-                <div className="hidden lg:block absolute top-8 left-[calc(50%+2.25rem)] right-0 h-px bg-white/10" />
+                <div className="hidden lg:block absolute top-8 left-[calc(50%+2rem)] right-0 h-px bg-white/10" />
               )}
               <div className="flex flex-col items-center text-center gap-2">
                 <div className="w-16 h-16 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-center text-2xl">
@@ -420,7 +424,7 @@ function CapabilityCard({
           </span>
         )}
       </div>
-      <div className="bg-[#0b141a] p-4 space-y-2.5 min-h-[180px]">
+      <div className="bg-[#0b141a] p-4 space-y-2.5">
         {cap.owner && (
           <div className="flex justify-end">
             <div className="bg-[#005c4b] text-white text-sm rounded-xl rounded-tr-sm px-3 py-2 max-w-[85%] leading-snug">
@@ -554,7 +558,7 @@ function Footer(): React.ReactElement {
           <span className="text-gray-400 text-sm font-medium">Kommand</span>
         </div>
         <p className="text-gray-600 text-sm">
-          © {new Date().getFullYear()} Kommand. Built for Shopify owners.
+          © {YEAR} Kommand. Built for Shopify owners.
         </p>
         <div className="flex gap-5">
           <Link
