@@ -5,8 +5,7 @@ import { decryptToken } from "../auth/encryption.js";
 import { ShopifyApiInputSchema } from "@kommand/shared";
 import type { PrimitiveResponse } from "@kommand/shared";
 import type { PrimitiveDefinition } from "./types.js";
-
-const SHOPIFY_API_VERSION = "2024-10";
+import { SHOPIFY_API_VERSION } from "../auth/shopify-oauth.js";
 
 export const shopifyDef: PrimitiveDefinition = {
   name: "shopify_api",

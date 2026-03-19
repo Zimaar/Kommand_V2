@@ -59,6 +59,8 @@ export async function exchangeShopifyCode(
   return data.access_token;
 }
 
+export const SHOPIFY_API_VERSION = "2024-10";
+
 // Topics Kommand needs Shopify to push events for
 const SHOPIFY_WEBHOOK_TOPICS = [
   "orders/create",
@@ -83,7 +85,7 @@ export async function registerShopifyWebhooks(
   for (const topic of SHOPIFY_WEBHOOK_TOPICS) {
     try {
       const res = await fetch(
-        `https://${shop}/admin/api/2024-10/webhooks.json`,
+        `https://${shop}/admin/api/${SHOPIFY_API_VERSION}/webhooks.json`,
         {
           method: "POST",
           headers: {
@@ -121,7 +123,7 @@ export async function saveShopifyStore(
   // Get store name from Shopify
   let storeName: string | null = null;
   try {
-    const res = await fetch(`https://${shop}/admin/api/2024-10/shop.json`, {
+    const res = await fetch(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/shop.json`, {
       headers: { "X-Shopify-Access-Token": accessToken },
     });
     if (res.ok) {

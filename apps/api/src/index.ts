@@ -3,6 +3,7 @@ import Fastify from "fastify";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import sensible from "@fastify/sensible";
+import rawBody from "fastify-raw-body";
 import { config } from "./config.js";
 import { AppError, sendError } from "./utils/errors.js";
 import { webhookRoutes } from "./routes/webhooks.js";
@@ -26,6 +27,10 @@ const app = Fastify({ logger: loggerConfig });
 // ─── Plugins ──────────────────────────────────────────────────────────────────
 
 await app.register(sensible);
+
+// Raw body — opt-in per route via { config: { rawBody: true } }
+// Required for Shopify webhook HMAC verification
+await app.register(rawBody, { global: false, field: "rawBody", encoding: false });
 
 await app.register(helmet, {
   // CSP is handled by the API gateway / reverse proxy in production
