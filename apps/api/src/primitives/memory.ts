@@ -1,116 +1,51 @@
-import Anthropic from "@anthropic-ai/sdk";
-import { eq, and, desc, sql } from "drizzle-orm";
-import { db } from "../db/connection.js";
-import { memories } from "../db/schema.js";
-import { config } from "../config.js";
 import type { PrimitiveResponse } from "@kommand/shared";
+import type { PrimitiveDefinition } from "./types.js";
 import { MemoryInputSchema } from "@kommand/shared";
 
-const anthropic = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
-const EMBEDDING_MODEL = "text-embedding-3-small";
-const EMBEDDING_DIMENSIONS = 1536;
-
-async function embed(text: string): Promise<number[]> {
-  const res = await fetch("https://api.openai.com/v1/embeddings", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${process.env["OPENAI_API_KEY"] ?? ""}`,
-      "Content-Type": "application/json",
+export const memoryDef: PrimitiveDefinition = {
+  name: "memory",
+  description:
+    "Read from or write to the business knowledge store. Use 'read' to search for relevant past observations, owner preferences, supplier info, seasonal patterns, or any previously stored knowledge. Use 'write' to store new observations about the business that will be useful in future interactions. Examples of what to remember: 'Owner prefers conservative pricing', 'Peak season is Nov-Dec', 'Main supplier is Al Noor Textiles, contact: ahmed@alnoor.ae', 'Average daily orders: 12-15'.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      action: {
+        type: "string",
+        enum: ["read", "write"],
+      },
+      query: {
+        type: "string",
+        description:
+          "For read: natural language search query to find relevant memories. For write: the observation or fact to store.",
+      },
+      category: {
+        type: "string",
+        enum: ["preference", "pattern", "contact", "decision", "observation", "workflow"],
+        description: "Category of the memory being stored. Only used for write.",
+      },
     },
-    body: JSON.stringify({
-      model: EMBEDDING_MODEL,
-      input: text,
-      dimensions: EMBEDDING_DIMENSIONS,
-    }),
-  });
+    required: ["action", "query"],
+  },
+  handler: memoryHandler,
+};
 
-  if (!res.ok) {
-    throw new Error(`Embedding API failed: ${res.status}`);
-  }
-
-  const data = await res.json() as { data: Array<{ embedding: number[] }> };
-  return data.data[0]?.embedding ?? [];
-}
-
-export async function memory(
-  input: unknown,
-  tenantId: string,
-  runId?: string
-): Promise<PrimitiveResponse> {
+// Mock — real implementation in M6
+async function memoryHandler(input: unknown, _tenantId: string): Promise<PrimitiveResponse> {
   const parsed = MemoryInputSchema.safeParse(input);
   if (!parsed.success) {
     return { success: false, error: `Invalid input: ${parsed.error.message}` };
   }
 
-  const { action, query, category } = parsed.data;
-
-  try {
-    if (action === "write") {
-      let embedding: number[] | null = null;
-      try {
-        embedding = await embed(query);
-      } catch {
-        // Proceed without embedding — full-text fallback
-      }
-
-      await db.insert(memories).values({
-        tenantId,
-        content: query,
-        category: category ?? "observation",
-        embedding: embedding ?? undefined,
-        sourceRunId: runId ?? null,
-        isActive: true,
-      });
-
-      return { success: true, data: { stored: true, content: query } };
-    }
-
-    // read — similarity search if embeddings available, else recency fallback
-    let embedding: number[] | null = null;
-    try {
-      embedding = await embed(query);
-    } catch {
-      // Fallback to recency
-    }
-
-    let rows;
-    if (embedding && embedding.length > 0) {
-      // pgvector similarity search
-      const vectorStr = `[${embedding.join(",")}]`;
-      rows = await db.execute(
-        sql`
-          SELECT id, content, category, created_at
-          FROM memories
-          WHERE tenant_id = ${tenantId}
-            AND is_active = true
-          ORDER BY embedding <=> ${vectorStr}::vector
-          LIMIT 10
-        `
-      );
-    } else {
-      // Recency fallback
-      rows = await db
-        .select({
-          id: memories.id,
-          content: memories.content,
-          category: memories.category,
-          createdAt: memories.createdAt,
-        })
-        .from(memories)
-        .where(and(eq(memories.tenantId, tenantId), eq(memories.isActive, true)))
-        .orderBy(desc(memories.createdAt))
-        .limit(10);
-    }
-
-    return {
-      success: true,
-      data: {
-        query,
-        results: Array.isArray(rows) ? rows : (rows as { rows: unknown[] }).rows,
-      },
-    };
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown error";
-    return { success: false, error: `Memory operation failed: ${message}` };
+  if (parsed.data.action === "write") {
+    return { success: true, data: { stored: true, id: "mock-memory-id" } };
   }
+
+  return {
+    success: true,
+    data: {
+      memories: [
+        { content: "Mock memory entry", category: "observation", createdAt: new Date().toISOString() },
+      ],
+    },
+  };
 }
