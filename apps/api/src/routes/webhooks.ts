@@ -1,9 +1,7 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { config } from "../config.js";
-import {
-  verifyWhatsAppSignature,
-  handleInboundWhatsApp,
-} from "../channels/whatsapp.js";
+import { verifyWhatsAppSignature, whatsappAdapter } from "../channels/whatsapp.js";
+import { processInboundMessage, registerAdapter } from "../channels/pipeline.js";
 import {
   buildShopifyInstallUrl,
   verifyShopifyHmac,
@@ -16,10 +14,11 @@ import {
   getXeroTenants,
   saveXeroConnection,
 } from "../auth/xero-oauth.js";
-import type { WhatsAppWebhookPayload } from "@kommand/shared";
-
 // In-memory oauth state store (use Redis in production)
 const oauthStates = new Map<string, { tenantId: string; expiresAt: number }>();
+
+// Register channel adapters
+registerAdapter("whatsapp", whatsappAdapter);
 
 export async function webhookRoutes(app: FastifyInstance): Promise<void> {
   // ─── WhatsApp ───────────────────────────────────────────────────────────────
@@ -50,8 +49,8 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
       // Respond 200 immediately — WhatsApp requires fast acks
       reply.status(200).send("OK");
 
-      // Process asynchronously
-      handleInboundWhatsApp(req.body as WhatsAppWebhookPayload).catch((err) => {
+      // Process asynchronously via pipeline
+      processInboundMessage("whatsapp", req.body).catch((err) => {
         console.error("WhatsApp message processing error:", err);
       });
     }

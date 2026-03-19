@@ -2,7 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import { tenants, channels } from "../db/schema.js";
 import { runAgent } from "../agent/loop.js";
-import { sendWhatsAppText } from "../channels/whatsapp.js";
+import { getAdapter } from "../channels/pipeline.js";
 
 export async function runProactiveAnalysis(tenantId: string): Promise<void> {
   const tenantRows = await db
@@ -43,7 +43,10 @@ Store any new patterns or observations in memory for future reference.`;
     .limit(1);
 
   if (channelRows[0]) {
-    await sendWhatsAppText(channelRows[0].identifier, result.text);
+    const adapter = getAdapter("whatsapp");
+    if (adapter) {
+      await adapter.sendText(tenantId, channelRows[0].identifier, result.text);
+    }
   }
 }
 
@@ -78,6 +81,9 @@ Keep it under 300 words. Format for WhatsApp mobile reading. Use emoji anchors. 
     .limit(1);
 
   if (channelRows[0]) {
-    await sendWhatsAppText(channelRows[0].identifier, result.text);
+    const adapter = getAdapter("whatsapp");
+    if (adapter) {
+      await adapter.sendText(tenantId, channelRows[0].identifier, result.text);
+    }
   }
 }

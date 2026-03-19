@@ -1,141 +1,105 @@
 import crypto from "crypto";
-import { eq, and } from "drizzle-orm";
-import { db } from "../db/connection.js";
-import { channels, tenants, messages } from "../db/schema.js";
 import { config } from "../config.js";
-import { runAgent } from "../agent/loop.js";
-import type { InboundMessage, OutboundMessage } from "@kommand/shared";
+import type { ChannelAdapter, InboundMessage } from "./types.js";
 import type { WhatsAppWebhookPayload } from "@kommand/shared";
+
+// ─── Signature verification ──────────────────────────────────────────────────
 
 export function verifyWhatsAppSignature(
   rawBody: Buffer,
   signature: string
 ): boolean {
-  const expected = crypto
-    .createHmac("sha256", config.WHATSAPP_APP_SECRET)
-    .update(rawBody)
-    .digest("hex");
+  if (!config.WHATSAPP_APP_SECRET) {
+    return false;
+  }
+  try {
+    const expected = crypto
+      .createHmac("sha256", config.WHATSAPP_APP_SECRET)
+      .update(rawBody)
+      .digest("hex");
 
-  const provided = signature.replace("sha256=", "");
-  return crypto.timingSafeEqual(
-    Buffer.from(expected, "hex"),
-    Buffer.from(provided, "hex")
-  );
+    const provided = signature.replace("sha256=", "");
+    return crypto.timingSafeEqual(
+      Buffer.from(expected, "hex"),
+      Buffer.from(provided, "hex")
+    );
+  } catch {
+    return false;
+  }
 }
 
-export async function handleInboundWhatsApp(
-  payload: WhatsAppWebhookPayload
-): Promise<void> {
-  for (const entry of payload.entry) {
-    for (const change of entry.changes) {
-      const { messages: inboundMsgs } = change.value;
-      if (!inboundMsgs || inboundMsgs.length === 0) {continue;}
+// ─── WhatsApp Channel Adapter ────────────────────────────────────────────────
 
-      for (const msg of inboundMsgs) {
-        // Only handle text and button replies
-        let text: string | null = null;
+export const whatsappAdapter: ChannelAdapter = {
+  parseInbound(raw: unknown): InboundMessage | null {
+    const payload = raw as WhatsAppWebhookPayload;
+    if (!payload?.entry) {
+      return null;
+    }
 
-        if (msg.type === "text" && msg.text) {
-          text = msg.text.body;
-        } else if (msg.type === "interactive" && msg.interactive) {
-          text =
-            msg.interactive.button_reply?.title ??
-            msg.interactive.list_reply?.title ??
-            null;
-        }
-
-        if (!text) {continue;}
-
-        const phoneNumber = msg.from;
-
-        // Find tenant by WhatsApp phone number
-        const channelRow = await db
-          .select({ tenantId: channels.tenantId })
-          .from(channels)
-          .where(
-            and(
-              eq(channels.type, "whatsapp"),
-              eq(channels.identifier, phoneNumber),
-              eq(channels.isActive, true)
-            )
-          )
-          .limit(1);
-
-        if (!channelRow[0]) {
-          // Unknown number — send onboarding message
-          await sendWhatsAppText(
-            phoneNumber,
-            "Hi! I'm Kommand. To get started, please sign up at your Kommand dashboard and link this WhatsApp number."
-          );
+    for (const entry of payload.entry) {
+      for (const change of entry.changes) {
+        const msgs = change.value.messages;
+        if (!msgs || msgs.length === 0) {
           continue;
         }
 
-        const tenantId = channelRow[0].tenantId;
+        for (const msg of msgs) {
+          let text: string | null = null;
 
-        // Dedup by channel_msg_id
-        const existing = await db
-          .select({ id: messages.id })
-          .from(messages)
-          .where(eq(messages.channelMsgId, msg.id))
-          .limit(1);
+          if (msg.type === "text" && msg.text) {
+            text = msg.text.body;
+          } else if (msg.type === "interactive" && msg.interactive) {
+            text =
+              msg.interactive.button_reply?.title ??
+              msg.interactive.list_reply?.title ??
+              null;
+          }
 
-        if (existing[0]) {continue;} // Already processed
+          if (!text) {
+            continue;
+          }
 
-        // Store inbound message
-        await db.insert(messages).values({
-          tenantId,
-          direction: "inbound",
-          role: "user",
-          content: text,
-          channelMsgId: msg.id,
-        });
-
-        // Mark as read
-        await markMessageRead(msg.id);
-
-        // Run the agent
-        const response = await runAgent(text, tenantId, "message");
-
-        // Send the response
-        await sendWhatsAppText(phoneNumber, response.text);
+          return {
+            tenantId: "", // resolved in pipeline
+            channelType: "whatsapp",
+            channelMessageId: msg.id,
+            from: msg.from,
+            text,
+            timestamp: new Date(Number(msg.timestamp) * 1000),
+          };
+        }
       }
     }
-  }
-}
 
-export async function sendWhatsAppText(to: string, text: string): Promise<void> {
-  // WhatsApp has a 4096 char limit — split if needed
-  const chunks = splitMessage(text, 4000);
+    return null;
+  },
 
-  for (const chunk of chunks) {
-    await sendMessage({
-      to,
-      type: "text",
-      text: chunk,
-    });
-  }
-}
+  async sendText(_tenantId: string, to: string, text: string): Promise<void> {
+    const chunks = splitMessage(text, 4000);
+    for (const chunk of chunks) {
+      await callWhatsAppApi({
+        messaging_product: "whatsapp",
+        to,
+        type: "text",
+        text: { body: chunk },
+      });
+    }
+  },
 
-export async function sendWhatsAppButtons(
-  to: string,
-  body: string,
-  buttons: Array<{ id: string; title: string }>
-): Promise<void> {
-  const url = `https://graph.facebook.com/v20.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-
-  await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.WHATSAPP_ACCESS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  async sendButtons(
+    _tenantId: string,
+    to: string,
+    text: string,
+    buttons: Array<{ id: string; title: string }>
+  ): Promise<void> {
+    await callWhatsAppApi({
       messaging_product: "whatsapp",
       to,
       type: "interactive",
       interactive: {
         type: "button",
-        body: { text: body },
+        body: { text },
         action: {
           buttons: buttons.slice(0, 3).map((b) => ({
             type: "reply",
@@ -143,50 +107,47 @@ export async function sendWhatsAppButtons(
           })),
         },
       },
-    }),
-  });
-}
+    });
+  },
 
-export async function sendWhatsAppDocument(
-  to: string,
-  documentUrl: string,
-  filename: string,
-  caption?: string
-): Promise<void> {
-  const url = `https://graph.facebook.com/v20.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-
-  await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.WHATSAPP_ACCESS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
+  async sendFile(
+    _tenantId: string,
+    to: string,
+    fileUrl: string,
+    caption: string
+  ): Promise<void> {
+    await callWhatsAppApi({
       messaging_product: "whatsapp",
       to,
       type: "document",
       document: {
-        link: documentUrl,
-        filename,
+        link: fileUrl,
+        filename: caption,
         caption,
       },
-    }),
+    });
+  },
+};
+
+// ─── Mark as read ────────────────────────────────────────────────────────────
+
+export async function markMessageRead(messageId: string): Promise<void> {
+  await callWhatsAppApi({
+    messaging_product: "whatsapp",
+    status: "read",
+    message_id: messageId,
   });
 }
 
-async function sendMessage(msg: OutboundMessage): Promise<void> {
-  const url = `https://graph.facebook.com/v20.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+// ─── Internal helpers ────────────────────────────────────────────────────────
 
-  const body: Record<string, unknown> = {
-    messaging_product: "whatsapp",
-    to: msg.to,
-    type: msg.type,
-  };
-
-  if (msg.type === "text" && msg.text) {
-    body["text"] = { body: msg.text };
+async function callWhatsAppApi(body: Record<string, unknown>): Promise<void> {
+  if (!config.WHATSAPP_PHONE_NUMBER_ID || !config.WHATSAPP_ACCESS_TOKEN) {
+    console.warn("[whatsapp] Missing WhatsApp config — skipping API call");
+    return;
   }
 
+  const url = `https://graph.facebook.com/v20.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`;
   await fetch(url, {
     method: "POST",
     headers: {
@@ -197,36 +158,23 @@ async function sendMessage(msg: OutboundMessage): Promise<void> {
   });
 }
 
-async function markMessageRead(messageId: string): Promise<void> {
-  const url = `https://graph.facebook.com/v20.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-  await fetch(url, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${config.WHATSAPP_ACCESS_TOKEN}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      messaging_product: "whatsapp",
-      status: "read",
-      message_id: messageId,
-    }),
-  });
-}
-
 function splitMessage(text: string, maxLength: number): string[] {
-  if (text.length <= maxLength) {return [text];}
+  if (text.length <= maxLength) {
+    return [text];
+  }
 
   const chunks: string[] = [];
   let remaining = text;
 
   while (remaining.length > maxLength) {
-    // Try to split at a newline
     const splitAt = remaining.lastIndexOf("\n", maxLength);
     const cutAt = splitAt > maxLength / 2 ? splitAt : maxLength;
     chunks.push(remaining.slice(0, cutAt));
     remaining = remaining.slice(cutAt).trim();
   }
 
-  if (remaining.length > 0) {chunks.push(remaining);}
+  if (remaining.length > 0) {
+    chunks.push(remaining);
+  }
   return chunks;
 }
