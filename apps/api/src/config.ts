@@ -29,6 +29,9 @@ const envSchema = z.object({
   // Code sandbox
   E2B_API_KEY: optionalInDev(),
 
+  // Web search (Serper)
+  SERPER_API_KEY: optionalInDev(),
+
   // File storage
   SUPABASE_URL: optionalInDev(z.string().url()),
   SUPABASE_SERVICE_KEY: optionalInDev(),

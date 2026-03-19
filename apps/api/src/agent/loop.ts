@@ -13,7 +13,7 @@ const anthropic = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY || "sk-ant-pl
 
 // Primitives that return external business data and must be XML-wrapped for
 // prompt-injection defence per SECURITY.md
-const BUSINESS_DATA_PRIMITIVES = new Set(["shopify_api", "xero_api"]);
+const BUSINESS_DATA_PRIMITIVES = new Set(["shopify_api", "xero_api", "web_search"]);
 
 type ClaudeMessage = Anthropic.MessageParam;
 
