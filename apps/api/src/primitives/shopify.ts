@@ -108,7 +108,7 @@ async function callShopify(
     if (method === "rest_get") {
       if (variables && Object.keys(variables).length > 0) {
         const qs = new URLSearchParams(
-          Object.entries(variables).map(([k, v]) => [k, String(v)])
+          Object.entries(variables).map(([k, v]) => [k, String(v)] as [string, string])
         );
         url = `${url}?${qs.toString()}`;
       }
@@ -120,7 +120,7 @@ async function callShopify(
       init = {
         method: method === "rest_post" ? "POST" : "PUT",
         headers,
-        body: variables ? JSON.stringify(variables) : undefined,
+        ...(variables ? { body: JSON.stringify(variables) } : {}),
       };
     }
   }

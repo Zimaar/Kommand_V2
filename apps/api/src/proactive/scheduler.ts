@@ -1,12 +1,20 @@
 import { Queue, Worker, type Job } from "bullmq";
-import IORedis from "ioredis";
 import { eq, lte, and } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import { tenants, scheduledJobs } from "../db/schema.js";
 import { runProactiveAnalysis, runMorningBrief } from "./analysis.js";
 import { config } from "../config.js";
 
-const connection = new IORedis(config.REDIS_URL, { maxRetriesPerRequest: null });
+// Parse REDIS_URL into a plain options object so BullMQ uses its own bundled
+// ioredis — avoids the dual-ioredis type conflict under exactOptionalPropertyTypes.
+const redisUrl = new URL(config.REDIS_URL);
+const connection = {
+  host: redisUrl.hostname,
+  port: parseInt(redisUrl.port || "6379", 10),
+  ...(redisUrl.password ? { password: decodeURIComponent(redisUrl.password) } : {}),
+  ...(redisUrl.protocol === "rediss:" ? { tls: {} } : {}),
+  maxRetriesPerRequest: null as null,
+};
 
 // Queues
 export const proactiveQueue = new Queue("proactive-analysis", { connection });

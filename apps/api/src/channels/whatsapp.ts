@@ -53,8 +53,8 @@ export const whatsappAdapter: ChannelAdapter = {
             text = msg.text.body;
           } else if (msg.type === "interactive" && msg.interactive) {
             text =
-              msg.interactive.button_reply?.title ??
-              msg.interactive.list_reply?.title ??
+              msg.interactive.button_reply?.id ??
+              msg.interactive.list_reply?.id ??
               null;
           }
 
@@ -66,7 +66,7 @@ export const whatsappAdapter: ChannelAdapter = {
             tenantId: "", // resolved in pipeline
             channelType: "whatsapp",
             channelMessageId: msg.id,
-            from: msg.from,
+            from: normalizeE164(msg.from),
             text,
             timestamp: new Date(Number(msg.timestamp) * 1000),
           });
@@ -141,6 +141,12 @@ export const whatsappAdapter: ChannelAdapter = {
 };
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
+
+/** Ensure phone number is E.164 (+<digits>). WhatsApp sends digits only. */
+function normalizeE164(phone: string): string {
+  const digits = phone.replace(/\D/g, "");
+  return `+${digits}`;
+}
 
 async function callWhatsAppApi(body: Record<string, unknown>): Promise<void> {
   if (!config.WHATSAPP_PHONE_NUMBER_ID || !config.WHATSAPP_ACCESS_TOKEN) {
