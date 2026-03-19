@@ -11,6 +11,10 @@ import type { AgentResponse, PrimitiveCallLog, AgentRunTrigger } from "@kommand/
 
 const anthropic = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY || "sk-ant-placeholder" });
 
+// Primitives that return external business data and must be XML-wrapped for
+// prompt-injection defence per SECURITY.md
+const BUSINESS_DATA_PRIMITIVES = new Set(["shopify_api", "xero_api"]);
+
 type ClaudeMessage = Anthropic.MessageParam;
 
 export async function runAgent(
@@ -122,10 +126,16 @@ export async function runAgent(
             latencyMs,
           });
 
+          // Wrap business data in XML tags for prompt-injection defence (SECURITY.md)
+          const raw = JSON.stringify(result);
+          const content = BUSINESS_DATA_PRIMITIVES.has(block.name)
+            ? `<business_data source="${block.name}">${raw}</business_data>`
+            : raw;
+
           return {
             type: "tool_result" as const,
             tool_use_id: block.id,
-            content: JSON.stringify(result),
+            content,
           };
         })
       );
