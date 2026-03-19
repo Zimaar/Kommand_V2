@@ -1,4 +1,4 @@
-import { eq, desc, sql, and } from "drizzle-orm";
+import { eq, desc, and } from "drizzle-orm";
 import { formatInTimeZone } from "date-fns-tz";
 import { db } from "../db/connection.js";
 import {
@@ -7,7 +7,6 @@ import {
   accountingConnections,
   messages,
   memories,
-  pendingActions,
 } from "../db/schema.js";
 import type {
   AgentContext,
@@ -21,7 +20,6 @@ import type {
 import {
   CONVERSATION_HISTORY_LENGTH,
   MEMORY_RETRIEVAL_COUNT,
-  PENDING_ACTION_EXPIRY_MINUTES,
 } from "../config.js";
 
 export async function buildContext(tenantId: string): Promise<AgentContext> {
@@ -120,35 +118,4 @@ export async function buildContext(tenantId: string): Promise<AgentContext> {
     businessMemory,
     currentTime,
   };
-}
-
-export async function getPendingConfirmation(
-  tenantId: string
-): Promise<(typeof pendingActions.$inferSelect) | null> {
-  const now = new Date();
-  const rows = await db
-    .select()
-    .from(pendingActions)
-    .where(
-      and(
-        eq(pendingActions.tenantId, tenantId),
-        eq(pendingActions.status, "pending"),
-        sql`${pendingActions.expiresAt} > ${now}`
-      )
-    )
-    .orderBy(desc(pendingActions.createdAt))
-    .limit(1);
-
-  return rows[0] ?? null;
-}
-
-export function isConfirmation(text: string): boolean {
-  const normalized = text.toLowerCase().trim();
-  const positivePatterns = ["yes", "yeah", "yep", "confirm", "go ahead", "do it", "send it", "ok", "okay"];
-  const negativePatterns = ["no", "nope", "cancel", "stop", "don't", "abort"];
-
-  return (
-    positivePatterns.some((p) => normalized === p || normalized.startsWith(p + " ")) ||
-    negativePatterns.some((p) => normalized === p || normalized.startsWith(p + " "))
-  );
 }

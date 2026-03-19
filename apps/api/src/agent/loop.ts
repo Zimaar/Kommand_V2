@@ -1,11 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { eq } from "drizzle-orm";
 import { config, AGENT_MODEL, MAX_AGENT_ITERATIONS, TOKEN_LIMITS, THINKING_BUDGETS } from "../config.js";
-import { buildContext, getPendingConfirmation, isConfirmation } from "./context.js";
+import { buildContext } from "./context.js";
+import { getPendingAction, isConfirmation, executePendingAction } from "./confirmation.js";
 import { buildSystemPrompt } from "./system-prompt.js";
 import { executePrimitive, getPrimitiveDefinitions } from "../primitives/index.js";
 import { db } from "../db/connection.js";
-import { agentRuns, pendingActions, messages } from "../db/schema.js";
+import { agentRuns, messages } from "../db/schema.js";
 import type { AgentResponse, PrimitiveCallLog, AgentRunTrigger } from "@kommand/shared";
 
 const anthropic = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY || "sk-ant-placeholder" });
@@ -37,9 +38,13 @@ export async function runAgent(
     const context = await buildContext(tenantId);
 
     // 2. Check for pending confirmation
-    const pending = await getPendingConfirmation(tenantId);
+    const pending = await getPendingAction(tenantId);
     if (pending && isConfirmation(inboundMessage)) {
-      return await handlePendingConfirmation(pending, inboundMessage, tenantId, runId, startTime);
+      const confirmResult = await executePendingAction(pending, inboundMessage, tenantId, runId);
+      if (confirmResult.outcome && confirmResult.text) {
+        return await finalizeRun(runId, tenantId, confirmResult.text, 1, 0, 0, [], startTime);
+      }
+      // Ambiguous — fall through to agent loop with context about the pending action
     }
 
     // 3. Build message array
@@ -209,48 +214,6 @@ async function callClaude(
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-// ─── Pending confirmation handler ─────────────────────────────────────────────
-
-async function handlePendingConfirmation(
-  pending: typeof pendingActions.$inferSelect,
-  reply: string,
-  tenantId: string,
-  runId: string,
-  startTime: number
-): Promise<AgentResponse> {
-  const normalized = reply.toLowerCase().trim();
-  const isYes = ["yes", "yeah", "yep", "confirm", "go ahead", "do it", "send it", "ok", "okay"].some(
-    (p) => normalized === p || normalized.startsWith(p + " ")
-  );
-
-  if (isYes) {
-    const result = await executePrimitive(
-      pending.primitiveName,
-      pending.primitiveInput as Record<string, unknown>,
-      tenantId,
-      runId
-    );
-
-    await db
-      .update(pendingActions)
-      .set({ status: "confirmed", resolvedAt: new Date() })
-      .where(eq(pendingActions.id, pending.id));
-
-    const responseText = result.success
-      ? `✅ Done. ${JSON.stringify(result.data).slice(0, 500)}`
-      : `❌ Failed: ${result.error}`;
-
-    return await finalizeRun(runId, tenantId, responseText, 1, 0, 0, [], startTime);
-  } else {
-    await db
-      .update(pendingActions)
-      .set({ status: "cancelled", resolvedAt: new Date() })
-      .where(eq(pendingActions.id, pending.id));
-
-    return await finalizeRun(runId, tenantId, "Got it — cancelled.", 1, 0, 0, [], startTime);
-  }
 }
 
 // ─── Finalize run ─────────────────────────────────────────────────────────────
