@@ -1,8 +1,14 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "crypto";
-import { config } from "../config.js";
 
 const ALGORITHM = "aes-256-gcm";
-const KEY = Buffer.from(config.ENCRYPTION_KEY, "hex");
+
+function getKey(): Buffer {
+  const key = process.env["ENCRYPTION_KEY"];
+  if (!key || key.length !== 64) {
+    throw new Error("ENCRYPTION_KEY must be a 64-character hex string (32 bytes)");
+  }
+  return Buffer.from(key, "hex");
+}
 
 export function encryptToken(plaintext: string): {
   enc: string;
@@ -10,7 +16,7 @@ export function encryptToken(plaintext: string): {
   tag: string;
 } {
   const iv = randomBytes(12); // 96-bit IV for GCM
-  const cipher = createCipheriv(ALGORITHM, KEY, iv);
+  const cipher = createCipheriv(ALGORITHM, getKey(), iv);
 
   const encrypted = Buffer.concat([
     cipher.update(plaintext, "utf8"),
@@ -27,7 +33,7 @@ export function encryptToken(plaintext: string): {
 export function decryptToken(enc: string, iv: string, tag: string): string {
   const decipher = createDecipheriv(
     ALGORITHM,
-    KEY,
+    getKey(),
     Buffer.from(iv, "base64")
   );
 

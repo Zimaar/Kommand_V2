@@ -11,14 +11,19 @@
     "build": "turbo run build",
     "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
-    "db:push": "turbo run db:push --filter=api",
-    "db:generate": "turbo run db:generate --filter=api",
-    "db:migrate": "turbo run db:migrate --filter=api"
+    "db:generate": "npm run db:generate --workspace=apps/api",
+    "db:migrate": "npm run db:migrate --workspace=apps/api",
+    "db:push": "npm run db:push --workspace=apps/api",
+    "db:seed": "tsx scripts/seed.ts",
+    "docker:up": "docker compose up -d --wait",
+    "docker:down": "docker compose down",
+    "docker:reset": "docker compose down -v && docker compose up -d --wait"
   },
   "devDependencies": {
     "turbo": "^2.3.0",
     "typescript": "^5.6.0",
-    "@types/node": "^20.0.0"
+    "@types/node": "^20.0.0",
+    "tsx": "^4.19.0"
   },
   "engines": {
     "node": ">=20.0.0"
