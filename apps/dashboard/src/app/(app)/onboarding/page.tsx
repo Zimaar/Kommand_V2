@@ -5,6 +5,8 @@ import { useSearchParams } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 import Link from "next/link";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ActiveStep = 1 | 2 | 3;
@@ -32,7 +34,7 @@ function ProgressIndicator({
       <div className="absolute top-4 left-8 right-8 h-px bg-gray-200" />
 
       {STEPS.map((step) => {
-        const isDone = step.id < activeStep || (step.id === 1 && shopifyDone);
+        const isDone = (step.id === 1 && shopifyDone) || (step.id === 2 && activeStep > 2);
         const isActive = step.id === activeStep && !isDone;
         const isFuture = step.id > activeStep;
 
@@ -267,8 +269,6 @@ export default function OnboardingPage(): React.ReactElement {
   const [phoneError, setPhoneError] = useState("");
   const [linking, setLinking] = useState(false);
 
-  const apiUrl = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-
   async function initiateShopify(): Promise<void> {
     let shop = shopInput.trim().toLowerCase();
 
@@ -287,7 +287,7 @@ export default function OnboardingPage(): React.ReactElement {
 
     try {
       const token = await getToken();
-      const res = await fetch(`${apiUrl}/api/dashboard/connections/shopify/initiate`, {
+      const res = await fetch(`${API_URL}/api/dashboard/connections/shopify/initiate`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -324,7 +324,7 @@ export default function OnboardingPage(): React.ReactElement {
 
     try {
       const token = await getToken();
-      const res = await fetch(`${apiUrl}/api/dashboard/whatsapp/link`, {
+      const res = await fetch(`${API_URL}/api/dashboard/whatsapp/link`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

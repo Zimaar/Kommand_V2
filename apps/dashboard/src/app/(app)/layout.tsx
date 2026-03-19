@@ -1,21 +1,10 @@
 import { UserButton } from "@clerk/nextjs";
+import { currentUser } from "@clerk/nextjs/server";
 import { SidebarNav } from "@/components/sidebar-nav";
 
-const hasClerkKey = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
-
-async function getDisplayName(): Promise<string> {
-  if (!hasClerkKey) { return "Account"; }
-  try {
-    const { currentUser } = await import("@clerk/nextjs/server");
-    const user = await currentUser();
-    return user?.firstName ?? user?.emailAddresses[0]?.emailAddress ?? "Account";
-  } catch {
-    return "Account";
-  }
-}
-
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const displayName = await getDisplayName();
+  const user = await currentUser();
+  const displayName = user?.firstName ?? user?.emailAddresses[0]?.emailAddress ?? "Account";
 
   return (
     <div className="flex h-screen bg-gray-50">
@@ -35,7 +24,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         {/* Footer */}
         <div className="px-4 py-4 border-t border-gray-100">
           <div className="flex items-center gap-2.5">
-            {hasClerkKey && <UserButton afterSignOutUrl="/" />}
+            <UserButton afterSignOutUrl="/" />
             <span className="text-sm text-gray-600 truncate">{displayName}</span>
           </div>
         </div>
