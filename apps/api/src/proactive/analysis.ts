@@ -1,6 +1,6 @@
 import { eq } from "drizzle-orm";
 import { db } from "../db/connection.js";
-import { tenants, channels } from "../db/schema.js";
+import { tenants } from "../db/schema.js";
 import { runAgent } from "../agent/loop.js";
 import { getAdapter } from "../channels/pipeline.js";
 
@@ -35,18 +35,9 @@ Store any new patterns or observations in memory for future reference.`;
 
   if (result.text.includes("NO_ALERT")) {return;}
 
-  // Find owner's WhatsApp number
-  const channelRows = await db
-    .select({ identifier: channels.identifier })
-    .from(channels)
-    .where(eq(channels.tenantId, tenantId))
-    .limit(1);
-
-  if (channelRows[0]) {
-    const adapter = getAdapter("whatsapp");
-    if (adapter) {
-      await adapter.sendText(tenantId, channelRows[0].identifier, result.text);
-    }
+  const adapter = getAdapter("whatsapp");
+  if (adapter) {
+    await adapter.sendText(tenantId, result.text);
   }
 }
 
@@ -73,17 +64,8 @@ Keep it under 300 words. Format for WhatsApp mobile reading. Use emoji anchors. 
 
   const result = await runAgent(briefPrompt, tenantId, "morning_brief");
 
-  // Find owner's WhatsApp number
-  const channelRows = await db
-    .select({ identifier: channels.identifier })
-    .from(channels)
-    .where(eq(channels.tenantId, tenantId))
-    .limit(1);
-
-  if (channelRows[0]) {
-    const adapter = getAdapter("whatsapp");
-    if (adapter) {
-      await adapter.sendText(tenantId, channelRows[0].identifier, result.text);
-    }
+  const adapter = getAdapter("whatsapp");
+  if (adapter) {
+    await adapter.sendText(tenantId, result.text);
   }
 }

@@ -177,22 +177,5 @@ async function resolveTenantByShop(shopDomain: string): Promise<string | null> {
  */
 async function runAndNotify(prompt: string, tenantId: string): Promise<void> {
   const agentResponse = await runAgent(prompt, tenantId, "proactive");
-
-  // Find the tenant's active WhatsApp channel
-  const channel = await db.query.channels.findFirst({
-    where: and(
-      eq(channels.tenantId, tenantId),
-      eq(channels.type, "whatsapp"),
-      eq(channels.isActive, true)
-    ),
-  });
-
-  if (!channel) {
-    console.warn(
-      `[shopify-webhook] No active WhatsApp channel for tenant ${tenantId} — agent ran but message not delivered`
-    );
-    return;
-  }
-
-  await whatsappAdapter.sendText(tenantId, channel.identifier, agentResponse.text);
+  await whatsappAdapter.sendText(tenantId, agentResponse.text);
 }

@@ -89,7 +89,6 @@ async function processSingleMessage(
   if (!checkRateLimit(tenantId)) {
     await adapter.sendText(
       tenantId,
-      parsed.from,
       "You're sending messages too fast. Please wait a moment and try again."
     );
     return;
@@ -106,18 +105,18 @@ async function processSingleMessage(
 
   if (pending) {
     // Pending action → send with confirmation buttons
-    await adapter.sendButtons(tenantId, parsed.from, response.text, [
+    await adapter.sendButtons(tenantId, response.text, [
       { id: "confirm_yes", title: "Yes" },
       { id: "confirm_no", title: "No" },
     ]);
   } else {
     // Plain text
-    await adapter.sendText(tenantId, parsed.from, response.text);
+    await adapter.sendText(tenantId, response.text);
   }
 
   // 10. Mark read
-  if (adapter.markRead) {
-    adapter.markRead(parsed.channelMessageId).catch((err) => {
+  if (adapter.markAsRead) {
+    adapter.markAsRead(parsed.channelMessageId).catch((err) => {
       console.warn(`[pipeline] Failed to mark message read: ${err}`);
     });
   }

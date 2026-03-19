@@ -1,5 +1,8 @@
 import crypto from "crypto";
+import { eq, and } from "drizzle-orm";
 import { config } from "../config.js";
+import { db } from "../db/connection.js";
+import { channels } from "../db/schema.js";
 import type { ChannelAdapter, InboundMessage } from "./types.js";
 import type { WhatsAppWebhookPayload } from "@kommand/shared";
 
@@ -77,8 +80,11 @@ export const whatsappAdapter: ChannelAdapter = {
     return results;
   },
 
-  async sendText(_tenantId: string, to: string, text: string): Promise<void> {
-    const chunks = splitMessage(text, 4000);
+  async sendText(tenantId: string, text: string): Promise<void> {
+    const to = await resolveOwnerPhone(tenantId);
+    if (!to) return;
+    const formatted = formatForWhatsApp(text);
+    const chunks = splitMessage(formatted, 4096);
     for (const chunk of chunks) {
       await callWhatsAppApi({
         messaging_product: "whatsapp",
@@ -90,20 +96,31 @@ export const whatsappAdapter: ChannelAdapter = {
   },
 
   async sendButtons(
-    _tenantId: string,
-    to: string,
+    tenantId: string,
     text: string,
     buttons: Array<{ id: string; title: string }>
   ): Promise<void> {
+    const to = await resolveOwnerPhone(tenantId);
+    if (!to) return;
+
+    // WhatsApp allows max 3 buttons; fall back to list for larger sets
+    if (buttons.length > 3) {
+      return whatsappAdapter.sendList(
+        tenantId,
+        text,
+        buttons.map((b) => ({ id: b.id, title: b.title }))
+      );
+    }
+
     await callWhatsAppApi({
       messaging_product: "whatsapp",
       to,
       type: "interactive",
       interactive: {
         type: "button",
-        body: { text },
+        body: { text: formatForWhatsApp(text) },
         action: {
-          buttons: buttons.slice(0, 3).map((b) => ({
+          buttons: buttons.map((b) => ({
             type: "reply",
             reply: { id: b.id, title: b.title.slice(0, 20) },
           })),
@@ -112,26 +129,64 @@ export const whatsappAdapter: ChannelAdapter = {
     });
   },
 
-  async sendFile(
-    _tenantId: string,
-    to: string,
-    fileUrl: string,
-    filename: string,
-    caption: string
+  async sendFile(tenantId: string, fileUrl: string, caption: string): Promise<void> {
+    const to = await resolveOwnerPhone(tenantId);
+    if (!to) return;
+
+    const ext = fileUrl.split("?")[0]?.split(".").pop()?.toLowerCase() ?? "";
+    const isImage = ext === "png" || ext === "jpg" || ext === "jpeg" || ext === "gif" || ext === "webp";
+
+    if (isImage) {
+      await callWhatsAppApi({
+        messaging_product: "whatsapp",
+        to,
+        type: "image",
+        image: { link: fileUrl, caption },
+      });
+    } else {
+      const filename = fileUrl.split("?")[0]?.split("/").pop() ?? "file";
+      await callWhatsAppApi({
+        messaging_product: "whatsapp",
+        to,
+        type: "document",
+        document: { link: fileUrl, filename, caption },
+      });
+    }
+  },
+
+  async sendList(
+    tenantId: string,
+    text: string,
+    items: Array<{ id: string; title: string; description?: string }>
   ): Promise<void> {
+    const to = await resolveOwnerPhone(tenantId);
+    if (!to) return;
+
     await callWhatsAppApi({
       messaging_product: "whatsapp",
       to,
-      type: "document",
-      document: {
-        link: fileUrl,
-        filename,
-        caption,
+      type: "interactive",
+      interactive: {
+        type: "list",
+        body: { text: formatForWhatsApp(text) },
+        action: {
+          button: "Choose…",
+          sections: [
+            {
+              title: "Options",
+              rows: items.slice(0, 10).map((item) => ({
+                id: item.id,
+                title: item.title.slice(0, 24),
+                ...(item.description ? { description: item.description.slice(0, 72) } : {}),
+              })),
+            },
+          ],
+        },
       },
     });
   },
 
-  async markRead(messageId: string): Promise<void> {
+  async markAsRead(messageId: string): Promise<void> {
     await callWhatsAppApi({
       messaging_product: "whatsapp",
       status: "read",
@@ -148,14 +203,52 @@ function normalizeE164(phone: string): string {
   return `+${digits}`;
 }
 
+/** Look up the tenant's registered WhatsApp phone number from the channels table. */
+async function resolveOwnerPhone(tenantId: string): Promise<string | null> {
+  const rows = await db
+    .select({ identifier: channels.identifier })
+    .from(channels)
+    .where(
+      and(
+        eq(channels.tenantId, tenantId),
+        eq(channels.type, "whatsapp"),
+        eq(channels.isActive, true)
+      )
+    )
+    .limit(1);
+
+  const phone = rows[0]?.identifier ?? null;
+  if (!phone) {
+    console.warn(`[whatsapp] No active WhatsApp channel for tenant ${tenantId}`);
+  }
+  return phone;
+}
+
+/**
+ * Format text for WhatsApp:
+ * - **bold** → *bold*
+ * - `code` → ```code```
+ * - Truncate to 4096 chars
+ */
+export function formatForWhatsApp(text: string): string {
+  let result = text
+    .replace(/\*\*(.+?)\*\*/gs, "*$1*")
+    .replace(/`([^`]+)`/g, "```$1```");
+
+  if (result.length > 4096) {
+    result = result.slice(0, 4093) + "...";
+  }
+  return result;
+}
+
 async function callWhatsAppApi(body: Record<string, unknown>): Promise<void> {
   if (!config.WHATSAPP_PHONE_NUMBER_ID || !config.WHATSAPP_ACCESS_TOKEN) {
     console.warn("[whatsapp] Missing WhatsApp config — skipping API call");
     return;
   }
 
-  const url = `https://graph.facebook.com/v20.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`;
-  await fetch(url, {
+  const url = `https://graph.facebook.com/v21.0/${config.WHATSAPP_PHONE_NUMBER_ID}/messages`;
+  const res = await fetch(url, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.WHATSAPP_ACCESS_TOKEN}`,
@@ -163,6 +256,11 @@ async function callWhatsAppApi(body: Record<string, unknown>): Promise<void> {
     },
     body: JSON.stringify(body),
   });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    console.error(`[whatsapp] API error ${res.status}: ${detail}`);
+  }
 }
 
 function splitMessage(text: string, maxLength: number): string[] {

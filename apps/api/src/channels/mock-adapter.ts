@@ -24,31 +24,34 @@ export const mockAdapter: ChannelAdapter = {
     }];
   },
 
-  async sendText(_tenantId: string, to: string, text: string): Promise<void> {
-    console.log(`\n[mock -> ${to}] ${text}`);
+  async sendText(tenantId: string, text: string): Promise<void> {
+    console.log(`\n[mock -> tenant:${tenantId}] ${text}`);
   },
 
   async sendButtons(
-    _tenantId: string,
-    to: string,
+    tenantId: string,
     text: string,
     buttons: Array<{ id: string; title: string }>
   ): Promise<void> {
     const btnLabels = buttons.map((b) => `[${b.title}]`).join("  ");
-    console.log(`\n[mock -> ${to}] ${text}\n   ${btnLabels}`);
+    console.log(`\n[mock -> tenant:${tenantId}] ${text}\n   ${btnLabels}`);
   },
 
-  async sendFile(
-    _tenantId: string,
-    to: string,
-    fileUrl: string,
-    filename: string,
-    caption: string
+  async sendFile(tenantId: string, fileUrl: string, caption: string): Promise<void> {
+    const filename = fileUrl.split("?")[0]?.split("/").pop() ?? "file";
+    console.log(`\n[mock -> tenant:${tenantId}] file: ${filename} (${fileUrl})\n   ${caption}`);
+  },
+
+  async sendList(
+    tenantId: string,
+    text: string,
+    items: Array<{ id: string; title: string; description?: string }>
   ): Promise<void> {
-    console.log(`\n[mock -> ${to}] file: ${filename} (${fileUrl})\n   ${caption}`);
+    const rows = items.map((i) => `  [${i.id}] ${i.title}${i.description ? ` — ${i.description}` : ""}`).join("\n");
+    console.log(`\n[mock -> tenant:${tenantId}] ${text}\n${rows}`);
   },
 
-  async markRead(messageId: string): Promise<void> {
+  async markAsRead(messageId: string): Promise<void> {
     console.log(`[mock] marked read: ${messageId}`);
   },
 };
