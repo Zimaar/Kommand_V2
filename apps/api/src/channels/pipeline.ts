@@ -118,6 +118,16 @@ async function processSingleMessage(
     await adapter.sendText(tenantId, response.text);
   }
 
+  // Send any generated files as document/image attachments
+  if (response.files && response.files.length > 0) {
+    for (const file of response.files) {
+      if (!file.url) continue; // dev mode — no URL
+      await adapter.sendFile(tenantId, file.url, file.filename).catch((err) => {
+        console.error(`[pipeline] Failed to send file "${file.filename}":`, err);
+      });
+    }
+  }
+
   // 10. Mark read
   if (adapter.markAsRead) {
     adapter.markAsRead(parsed.channelMessageId).catch((err) => {

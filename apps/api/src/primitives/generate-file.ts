@@ -1,6 +1,8 @@
 import type { PrimitiveResponse } from "@kommand/shared";
 import type { PrimitiveDefinition } from "./types.js";
 import { GenerateFileInputSchema } from "@kommand/shared";
+import { config } from "../config.js";
+import { uploadFile } from "../utils/storage.js";
 
 export const generateFileDef: PrimitiveDefinition = {
   name: "generate_file",
@@ -21,18 +23,36 @@ export const generateFileDef: PrimitiveDefinition = {
   handler: generateFile,
 };
 
-// Mock — real implementation in M4
-async function generateFile(input: unknown, _tenantId: string): Promise<PrimitiveResponse> {
+async function generateFile(
+  input: unknown,
+  tenantId: string,
+  runId?: string
+): Promise<PrimitiveResponse> {
   const parsed = GenerateFileInputSchema.safeParse(input);
   if (!parsed.success) {
     return { success: false, error: `Invalid input: ${parsed.error.message}` };
   }
 
-  return {
-    success: true,
-    data: {
-      url: "https://mock.storage/files/mock-file.csv",
-      filename: parsed.data.filename,
-    },
-  };
+  const { filename, content, content_type } = parsed.data;
+
+  if (!config.SUPABASE_URL || !config.SUPABASE_SERVICE_KEY) {
+    // Dev fallback — return the content inline
+    return {
+      success: true,
+      data: {
+        url: "",
+        filename,
+        note: "File storage not configured. Content preview: " + content.slice(0, 200),
+      },
+    };
+  }
+
+  try {
+    const contentBytes = new TextEncoder().encode(content);
+    const { url } = await uploadFile(tenantId, filename, contentBytes, content_type, runId);
+    return { success: true, data: { url, filename } };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return { success: false, error: `File generation failed: ${message}` };
+  }
 }

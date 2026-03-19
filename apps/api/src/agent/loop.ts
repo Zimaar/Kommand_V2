@@ -6,7 +6,7 @@ import { getPendingAction, isConfirmation, executePendingAction } from "./confir
 import { buildSystemPrompt } from "./system-prompt.js";
 import { executePrimitive, getPrimitiveDefinitions } from "../primitives/index.js";
 import { db } from "../db/connection.js";
-import { agentRuns, messages } from "../db/schema.js";
+import { agentRuns, messages, generatedFiles } from "../db/schema.js";
 import type { AgentResponse, PrimitiveCallLog, AgentRunTrigger } from "@kommand/shared";
 
 const anthropic = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY || "sk-ant-placeholder" });
@@ -271,5 +271,19 @@ async function finalizeRun(
     agentRunId: runId,
   });
 
-  return { text, agentRunId: runId, iterations, tokensUsed, latencyMs, primitivesCalled: primitiveLogs };
+  // Collect any files generated during this run by the primitives
+  const runFiles = await db
+    .select({ url: generatedFiles.downloadUrl, filename: generatedFiles.filename })
+    .from(generatedFiles)
+    .where(eq(generatedFiles.agentRunId, runId));
+
+  return {
+    text,
+    ...(runFiles.length > 0 ? { files: runFiles } : {}),
+    agentRunId: runId,
+    iterations,
+    tokensUsed,
+    latencyMs,
+    primitivesCalled: primitiveLogs,
+  };
 }
