@@ -26,7 +26,7 @@ export default function OnboardingPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ phone }),
       });
-      if (res.ok) setStep("done");
+      if (res.ok) { setStep("done"); }
     } finally {
       setSaving(false);
     }
