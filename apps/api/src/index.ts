@@ -6,6 +6,7 @@ import sensible from "@fastify/sensible";
 import { config } from "./config.js";
 import { AppError, sendError } from "./utils/errors.js";
 import { webhookRoutes } from "./routes/webhooks.js";
+import { shopifyWebhookRoutes } from "./routes/shopify-webhooks.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { authRoutes } from "./routes/auth.js";
 import { redis } from "./lib/redis.js";
@@ -68,6 +69,7 @@ app.get("/api/health", async () => ({
 
 await app.register(authRoutes, { prefix: "/auth" });
 await app.register(webhookRoutes, { prefix: "/webhooks" });
+await app.register(shopifyWebhookRoutes, { prefix: "/webhooks" });
 await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────

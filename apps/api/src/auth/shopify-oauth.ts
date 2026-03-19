@@ -59,6 +59,57 @@ export async function exchangeShopifyCode(
   return data.access_token;
 }
 
+// Topics Kommand needs Shopify to push events for
+const SHOPIFY_WEBHOOK_TOPICS = [
+  "orders/create",
+  "orders/cancelled",
+  "app/uninstalled",
+  "customers/data_request", // GDPR mandatory
+  "customers/redact",       // GDPR mandatory
+  "shop/redact",            // GDPR mandatory
+] as const;
+
+/**
+ * Register all required Shopify webhook topics for a store.
+ * Called once during OAuth callback after the store is saved.
+ * Idempotent: Shopify returns 422 if the webhook already exists — we ignore it.
+ */
+export async function registerShopifyWebhooks(
+  shop: string,
+  accessToken: string
+): Promise<void> {
+  const webhookUrl = `${config.API_URL}/webhooks/shopify`;
+
+  for (const topic of SHOPIFY_WEBHOOK_TOPICS) {
+    try {
+      const res = await fetch(
+        `https://${shop}/admin/api/2024-10/webhooks.json`,
+        {
+          method: "POST",
+          headers: {
+            "X-Shopify-Access-Token": accessToken,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            webhook: { topic, address: webhookUrl, format: "json" },
+          }),
+        }
+      );
+
+      if (!res.ok && res.status !== 422) {
+        // 422 = already exists — fine. Anything else is worth logging.
+        const text = await res.text();
+        console.warn(
+          `[shopify-oauth] Failed to register webhook "${topic}" (${res.status}): ${text}`
+        );
+      }
+    } catch (err) {
+      // Non-fatal — webhooks can be re-registered on next install
+      console.warn(`[shopify-oauth] Error registering webhook "${topic}":`, err);
+    }
+  }
+}
+
 export async function saveShopifyStore(
   tenantId: string,
   shop: string,

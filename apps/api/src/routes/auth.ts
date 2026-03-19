@@ -7,6 +7,7 @@ import {
   verifyShopifyHmac,
   exchangeShopifyCode,
   saveShopifyStore,
+  registerShopifyWebhooks,
 } from "../auth/shopify-oauth.js";
 
 // Nonce TTL: 5 minutes
@@ -66,6 +67,12 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       const accessToken = await exchangeShopifyCode(shop, code);
       const scopes = config.SHOPIFY_SCOPES.split(",");
       await saveShopifyStore(tenantId, shop, accessToken, scopes);
+
+      // Register Shopify webhooks — non-blocking so a registration failure
+      // doesn't break the OAuth flow. Idempotent on re-install.
+      registerShopifyWebhooks(shop, accessToken).catch((err: unknown) => {
+        app.log.warn({ err, shop }, "Shopify webhook registration failed (non-fatal)");
+      });
 
       return reply.redirect(`${config.DASHBOARD_URL}/onboarding?step=whatsapp&connected=shopify`);
     } catch (error) {
