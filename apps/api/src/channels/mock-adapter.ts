@@ -1,4 +1,5 @@
 import type { ChannelAdapter, InboundMessage } from "./types.js";
+import { fileUrlToFilename } from "./channel-utils.js";
 
 /**
  * Mock channel adapter for local dev/testing.
@@ -38,8 +39,7 @@ export const mockAdapter: ChannelAdapter = {
   },
 
   async sendFile(tenantId: string, fileUrl: string, caption: string): Promise<void> {
-    const filename = fileUrl.split("?")[0]?.split("/").pop() ?? "file";
-    console.log(`\n[mock -> tenant:${tenantId}] file: ${filename} (${fileUrl})\n   ${caption}`);
+    console.log(`\n[mock -> tenant:${tenantId}] file: ${fileUrlToFilename(fileUrl)} (${fileUrl})\n   ${caption}`);
   },
 
   async sendList(

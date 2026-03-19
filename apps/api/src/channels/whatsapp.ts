@@ -5,6 +5,9 @@ import { db } from "../db/connection.js";
 import { channels } from "../db/schema.js";
 import type { ChannelAdapter, InboundMessage } from "./types.js";
 import type { WhatsAppWebhookPayload } from "@kommand/shared";
+import { formatForWhatsApp, fileUrlToFilename } from "./channel-utils.js";
+
+const LIST_BUTTON_LABEL = "Choose…";
 
 // ─── Signature verification ──────────────────────────────────────────────────
 
@@ -105,11 +108,7 @@ export const whatsappAdapter: ChannelAdapter = {
 
     // WhatsApp allows max 3 buttons; fall back to list for larger sets
     if (buttons.length > 3) {
-      return whatsappAdapter.sendList(
-        tenantId,
-        text,
-        buttons.map((b) => ({ id: b.id, title: b.title }))
-      );
+      return sendListInteractive(to, text, buttons.map((b) => ({ id: b.id, title: b.title })));
     }
 
     await callWhatsAppApi({
@@ -144,12 +143,11 @@ export const whatsappAdapter: ChannelAdapter = {
         image: { link: fileUrl, caption },
       });
     } else {
-      const filename = fileUrl.split("?")[0]?.split("/").pop() ?? "file";
       await callWhatsAppApi({
         messaging_product: "whatsapp",
         to,
         type: "document",
-        document: { link: fileUrl, filename, caption },
+        document: { link: fileUrl, filename: fileUrlToFilename(fileUrl), caption },
       });
     }
   },
@@ -161,29 +159,7 @@ export const whatsappAdapter: ChannelAdapter = {
   ): Promise<void> {
     const to = await resolveOwnerPhone(tenantId);
     if (!to) return;
-
-    await callWhatsAppApi({
-      messaging_product: "whatsapp",
-      to,
-      type: "interactive",
-      interactive: {
-        type: "list",
-        body: { text: formatForWhatsApp(text) },
-        action: {
-          button: "Choose…",
-          sections: [
-            {
-              title: "Options",
-              rows: items.slice(0, 10).map((item) => ({
-                id: item.id,
-                title: item.title.slice(0, 24),
-                ...(item.description ? { description: item.description.slice(0, 72) } : {}),
-              })),
-            },
-          ],
-        },
-      },
-    });
+    return sendListInteractive(to, text, items);
   },
 
   async markAsRead(messageId: string): Promise<void> {
@@ -196,6 +172,36 @@ export const whatsappAdapter: ChannelAdapter = {
 };
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
+
+/** Send a WhatsApp interactive list message. Shared by sendList and the sendButtons fallback. */
+async function sendListInteractive(
+  to: string,
+  text: string,
+  items: Array<{ id: string; title: string; description?: string }>
+): Promise<void> {
+  await callWhatsAppApi({
+    messaging_product: "whatsapp",
+    to,
+    type: "interactive",
+    interactive: {
+      type: "list",
+      body: { text: formatForWhatsApp(text) },
+      action: {
+        button: LIST_BUTTON_LABEL,
+        sections: [
+          {
+            title: "Options",
+            rows: items.slice(0, 10).map((item) => ({
+              id: item.id,
+              title: item.title.slice(0, 24),
+              ...(item.description ? { description: item.description.slice(0, 72) } : {}),
+            })),
+          },
+        ],
+      },
+    },
+  });
+}
 
 /** Ensure phone number is E.164 (+<digits>). WhatsApp sends digits only. */
 function normalizeE164(phone: string): string {
@@ -222,23 +228,6 @@ async function resolveOwnerPhone(tenantId: string): Promise<string | null> {
     console.warn(`[whatsapp] No active WhatsApp channel for tenant ${tenantId}`);
   }
   return phone;
-}
-
-/**
- * Format text for WhatsApp:
- * - **bold** → *bold*
- * - `code` → ```code```
- * - Truncate to 4096 chars
- */
-export function formatForWhatsApp(text: string): string {
-  let result = text
-    .replace(/\*\*(.+?)\*\*/gs, "*$1*")
-    .replace(/`([^`]+)`/g, "```$1```");
-
-  if (result.length > 4096) {
-    result = result.slice(0, 4093) + "...";
-  }
-  return result;
 }
 
 async function callWhatsAppApi(body: Record<string, unknown>): Promise<void> {
