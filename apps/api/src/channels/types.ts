@@ -3,8 +3,8 @@ import type { InboundMessage } from "@kommand/shared";
 export type { InboundMessage, OutboundMessage, WhatsAppButton, WhatsAppMessageType } from "@kommand/shared";
 
 export interface ChannelAdapter {
-  /** Parse raw webhook/input body into an InboundMessage, or null if not a real message. */
-  parseInbound(raw: unknown): InboundMessage | null;
+  /** Parse raw webhook/input body into InboundMessages. Returns empty array if no real messages. */
+  parseInbound(raw: unknown): InboundMessage[];
 
   /** Send a plain text message to the tenant's channel. */
   sendText(tenantId: string, to: string, text: string): Promise<void>;
@@ -18,13 +18,8 @@ export interface ChannelAdapter {
   ): Promise<void>;
 
   /** Send a file (document/image) with optional caption. */
-  sendFile(tenantId: string, to: string, fileUrl: string, caption: string): Promise<void>;
-}
+  sendFile(tenantId: string, to: string, fileUrl: string, filename: string, caption: string): Promise<void>;
 
-/** Parsed result from a channel adapter. */
-export interface InboundParsed {
-  channelMessageId: string;
-  from: string;
-  text: string;
-  timestamp: Date;
+  /** Mark a message as read (e.g., WhatsApp read receipts). */
+  markRead?(messageId: string): Promise<void>;
 }

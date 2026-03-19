@@ -1,4 +1,4 @@
-import { eq, desc, sql, and, lt } from "drizzle-orm";
+import { eq, desc, gt, and, lt } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import { pendingActions } from "../db/schema.js";
 import { executePrimitive } from "../primitives/index.js";
@@ -19,7 +19,7 @@ export async function getPendingAction(tenantId: string): Promise<PendingAction 
       and(
         eq(pendingActions.tenantId, tenantId),
         eq(pendingActions.status, "pending"),
-        sql`${pendingActions.expiresAt} > ${now}`
+        gt(pendingActions.expiresAt, now)
       )
     )
     .orderBy(desc(pendingActions.createdAt))
@@ -87,9 +87,10 @@ export async function executePendingAction(
       runId
     );
 
+    const status = result.success ? "confirmed" : "failed";
     await db
       .update(pendingActions)
-      .set({ status: "confirmed", resolvedAt: new Date() })
+      .set({ status, resolvedAt: new Date() })
       .where(eq(pendingActions.id, action.id));
 
     const text = result.success

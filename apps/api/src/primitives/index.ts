@@ -14,6 +14,9 @@ import { memoryDef } from "./memory.js";
 const primitiveRegistry = new Map<string, PrimitiveDefinition>();
 
 function registerPrimitive(def: PrimitiveDefinition): void {
+  if (primitiveRegistry.has(def.name)) {
+    throw new Error(`Duplicate primitive registration: "${def.name}"`);
+  }
   primitiveRegistry.set(def.name, def);
 }
 
@@ -60,6 +63,8 @@ export function getPrimitivesForClaude(connectedPlatforms: PrimitiveName[]): Too
         description: def.description,
         input_schema: def.inputSchema,
       });
+    } else if (!ALWAYS_AVAILABLE.includes(name as PrimitiveName)) {
+      console.warn(`[primitives] Unknown platform primitive requested: "${name}"`);
     }
   }
   return tools;
@@ -84,14 +89,13 @@ export async function executePrimitive(
   }
 
   const startMs = Date.now();
-  const inputSummary = truncate(JSON.stringify(input), 200);
 
   try {
     const result = await def.handler(input, tenantId, runId);
     const latencyMs = Date.now() - startMs;
 
     console.log(
-      `[primitive] ${name} tenant=${tenantId} success=${result.success} latency=${latencyMs}ms input=${inputSummary}`
+      `[primitive] ${name} tenant=${tenantId} success=${result.success} latency=${latencyMs}ms`
     );
 
     return result;
@@ -100,7 +104,7 @@ export async function executePrimitive(
     const message = err instanceof Error ? err.message : "Unknown error";
 
     console.error(
-      `[primitive] ${name} tenant=${tenantId} success=false latency=${latencyMs}ms error=${message} input=${inputSummary}`
+      `[primitive] ${name} tenant=${tenantId} success=false latency=${latencyMs}ms error=${message}`
     );
 
     return { success: false, error: `Primitive ${name} failed: ${message}` };
@@ -109,7 +113,3 @@ export async function executePrimitive(
 
 // Alias for backward compat with agent/loop.ts
 export const getPrimitiveDefinitions = getPrimitivesForClaude;
-
-function truncate(str: string, max: number): string {
-  return str.length > max ? str.slice(0, max) + "…" : str;
-}

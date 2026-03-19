@@ -4,9 +4,12 @@
  * Usage: npx tsx scripts/test-agent.ts
  *
  * Tests:
- * 1. runAgent with missing API key → graceful error
- * 2. buildContext loads tenant correctly
- * 3. getPrimitivesForClaude returns correct tools based on connections
+ * 1. buildContext loads tenant correctly
+ * 2. getPrimitivesForClaude returns correct tools based on connections
+ * 3. executePrimitive mock handlers
+ * 4. buildSystemPrompt includes tenant name and timezone
+ * 5. isConfirmation + classifyConfirmation
+ * 6. runAgent with placeholder API key → graceful error
  */
 import "dotenv/config";
 import { eq } from "drizzle-orm";
@@ -99,7 +102,7 @@ async function run(): Promise<void> {
   console.log("  ✅ passed\n");
 
   // Test 6: runAgent with placeholder API key → graceful error
-  console.log("── Test 4: runAgent graceful error handling ──");
+  console.log("── Test 6: runAgent graceful error handling ──");
   const { runAgent } = await import("../apps/api/src/agent/loop.js");
   const result = await runAgent("Hello, how are you?", tenant.id, "message");
   console.log(`  text: "${result.text}"`);

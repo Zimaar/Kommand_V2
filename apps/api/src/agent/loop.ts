@@ -33,6 +33,12 @@ export async function runAgent(
 
   const runId = runRecord!.id;
 
+  // Hoisted for access in catch block
+  let totalInputTokens = 0;
+  let totalOutputTokens = 0;
+  let iterations = 0;
+  const primitiveLogs: PrimitiveCallLog[] = [];
+
   try {
     // 1. Load context
     const context = await buildContext(tenantId);
@@ -61,11 +67,6 @@ export async function runAgent(
     const tokenLimit = TOKEN_LIMITS[context.tenant.plan] ?? TOKEN_LIMITS["trial"]!;
     const thinkingBudget = THINKING_BUDGETS[context.tenant.plan] ?? THINKING_BUDGETS["trial"]!;
 
-    let totalInputTokens = 0;
-    let totalOutputTokens = 0;
-    let iterations = 0;
-    const primitiveLogs: PrimitiveCallLog[] = [];
-
     // 4. Agent loop
     while (iterations < MAX_AGENT_ITERATIONS) {
       iterations++;
@@ -92,17 +93,7 @@ export async function runAgent(
         );
       }
 
-      // Check token budget
-      if (totalInputTokens + totalOutputTokens >= tokenLimit) {
-        msgs.push({
-          role: "user",
-          content: "Token budget reached. Please summarize what you have and deliver your best answer to the owner now.",
-        });
-        break;
-      }
-
-      // Execute primitives in parallel
-      // response.content contains TextBlock | ToolUseBlock — cast to the param equivalents
+      // Append assistant message with tool_use blocks to conversation history
       msgs.push({
         role: "assistant",
         content: response.content.map((b) => {
@@ -117,6 +108,7 @@ export async function runAgent(
         }),
       });
 
+      // Execute primitives in parallel
       const toolResults = await Promise.all(
         toolBlocks.map(async (block) => {
           const callStart = Date.now();
@@ -139,6 +131,15 @@ export async function runAgent(
       );
 
       msgs.push({ role: "user", content: toolResults });
+
+      // Check token budget — after appending tool results so conversation stays valid
+      if (totalInputTokens + totalOutputTokens >= tokenLimit) {
+        msgs.push({
+          role: "user",
+          content: "Token budget reached. Please summarize what you have and deliver your best answer to the owner now.",
+        });
+        break;
+      }
 
       // Force wrap-up approaching max iterations
       if (iterations >= MAX_AGENT_ITERATIONS - 5) {
@@ -167,19 +168,20 @@ export async function runAgent(
     );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
+    const latencyMs = Date.now() - startTime;
 
     await db
       .update(agentRuns)
-      .set({ status: "failed", error: errorMessage, latencyMs: Date.now() - startTime })
+      .set({ status: "failed", error: errorMessage, latencyMs })
       .where(eq(agentRuns.id, runId));
 
     return {
       text: "I'm having trouble thinking right now. Try again in a minute.",
       agentRunId: runId,
-      iterations: 0,
-      tokensUsed: 0,
-      latencyMs: Date.now() - startTime,
-      primitivesCalled: [],
+      iterations,
+      tokensUsed: totalInputTokens + totalOutputTokens,
+      latencyMs,
+      primitivesCalled: primitiveLogs,
     };
   }
 }
@@ -205,8 +207,13 @@ async function callClaude(
   try {
     return await anthropic.messages.create(params);
   } catch (err) {
-    // Retry once after 2s
-    console.warn("[agent] Claude API failed, retrying in 2s…", err instanceof Error ? err.message : err);
+    // Only retry on transient errors (5xx, timeouts, network failures)
+    const status = (err as { status?: number }).status;
+    const isTransient = !status || status >= 500 || status === 429;
+    if (!isTransient) {
+      throw err;
+    }
+    console.warn("[agent] Claude API transient failure, retrying in 2s…", err instanceof Error ? err.message : err);
     await sleep(2000);
     return await anthropic.messages.create(params);
   }

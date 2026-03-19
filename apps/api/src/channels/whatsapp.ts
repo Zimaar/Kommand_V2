@@ -31,11 +31,13 @@ export function verifyWhatsAppSignature(
 // ─── WhatsApp Channel Adapter ────────────────────────────────────────────────
 
 export const whatsappAdapter: ChannelAdapter = {
-  parseInbound(raw: unknown): InboundMessage | null {
+  parseInbound(raw: unknown): InboundMessage[] {
     const payload = raw as WhatsAppWebhookPayload;
     if (!payload?.entry) {
-      return null;
+      return [];
     }
+
+    const results: InboundMessage[] = [];
 
     for (const entry of payload.entry) {
       for (const change of entry.changes) {
@@ -60,19 +62,19 @@ export const whatsappAdapter: ChannelAdapter = {
             continue;
           }
 
-          return {
+          results.push({
             tenantId: "", // resolved in pipeline
             channelType: "whatsapp",
             channelMessageId: msg.id,
             from: msg.from,
             text,
             timestamp: new Date(Number(msg.timestamp) * 1000),
-          };
+          });
         }
       }
     }
 
-    return null;
+    return results;
   },
 
   async sendText(_tenantId: string, to: string, text: string): Promise<void> {
@@ -114,6 +116,7 @@ export const whatsappAdapter: ChannelAdapter = {
     _tenantId: string,
     to: string,
     fileUrl: string,
+    filename: string,
     caption: string
   ): Promise<void> {
     await callWhatsAppApi({
@@ -122,22 +125,20 @@ export const whatsappAdapter: ChannelAdapter = {
       type: "document",
       document: {
         link: fileUrl,
-        filename: caption,
+        filename,
         caption,
       },
     });
   },
+
+  async markRead(messageId: string): Promise<void> {
+    await callWhatsAppApi({
+      messaging_product: "whatsapp",
+      status: "read",
+      message_id: messageId,
+    });
+  },
 };
-
-// ─── Mark as read ────────────────────────────────────────────────────────────
-
-export async function markMessageRead(messageId: string): Promise<void> {
-  await callWhatsAppApi({
-    messaging_product: "whatsapp",
-    status: "read",
-    message_id: messageId,
-  });
-}
 
 // ─── Internal helpers ────────────────────────────────────────────────────────
 

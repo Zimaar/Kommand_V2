@@ -25,6 +25,7 @@ const app = Fastify({ logger: loggerConfig });
 await app.register(sensible);
 
 await app.register(helmet, {
+  // CSP is handled by the API gateway / reverse proxy in production
   contentSecurityPolicy: false,
 });
 
@@ -35,14 +36,14 @@ await app.register(cors, {
 
 // ─── Global error handler ─────────────────────────────────────────────────────
 
-app.setErrorHandler((error: Error & { validation?: unknown }, _request, reply) => {
+app.setErrorHandler((error: Error & { validation?: unknown; statusCode?: number }, _request, reply) => {
   if (error instanceof AppError) {
     return sendError(reply as Parameters<typeof sendError>[0], error);
   }
 
-  // Fastify validation errors (from schema validation)
+  // Fastify validation errors (from schema validation) — use 422 to match ValidationError
   if (error.validation) {
-    return reply.status(400).send({
+    return reply.status(422).send({
       success: false,
       error: { code: "VALIDATION_ERROR", message: error.message },
     });
@@ -74,8 +75,18 @@ async function shutdown(signal: string): Promise<void> {
   process.exit(0);
 }
 
-process.on("SIGTERM", () => shutdown("SIGTERM"));
-process.on("SIGINT", () => shutdown("SIGINT"));
+process.on("SIGTERM", () => {
+  shutdown("SIGTERM").catch((err) => {
+    app.log.error(err, "Shutdown failed");
+    process.exit(1);
+  });
+});
+process.on("SIGINT", () => {
+  shutdown("SIGINT").catch((err) => {
+    app.log.error(err, "Shutdown failed");
+    process.exit(1);
+  });
+});
 
 // ─── Start ────────────────────────────────────────────────────────────────────
 

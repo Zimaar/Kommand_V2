@@ -30,22 +30,22 @@ async function run(): Promise<void> {
 
   console.log("── Test 4: Mock adapter parseInbound ──");
   const parsed = mockAdapter.parseInbound({ text: "test message", from: "+123" });
-  if (!parsed) {
+  if (parsed.length === 0) {
     throw new Error("Expected parsed message");
   }
-  if (parsed.text !== "test message") {
-    throw new Error(`Expected "test message", got "${parsed.text}"`);
+  if (parsed[0]!.text !== "test message") {
+    throw new Error(`Expected "test message", got "${parsed[0]!.text}"`);
   }
-  if (parsed.from !== "+123") {
-    throw new Error(`Expected "+123", got "${parsed.from}"`);
+  if (parsed[0]!.from !== "+123") {
+    throw new Error(`Expected "+123", got "${parsed[0]!.from}"`);
   }
-  console.log(`  parsed: text="${parsed.text}" from="${parsed.from}"`);
+  console.log(`  parsed: text="${parsed[0]!.text}" from="${parsed[0]!.from}"`);
   console.log("  ✅ passed\n");
 
-  console.log("── Test 5: Mock adapter parseInbound returns null for empty text ──");
+  console.log("── Test 5: Mock adapter parseInbound returns empty for empty text ──");
   const empty = mockAdapter.parseInbound({ text: "", from: "+123" });
-  if (empty !== null) {
-    throw new Error("Expected null for empty text");
+  if (empty.length !== 0) {
+    throw new Error("Expected empty array for empty text");
   }
   console.log("  ✅ passed\n");
 

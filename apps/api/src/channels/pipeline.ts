@@ -43,12 +43,23 @@ export async function processInboundMessage(
     return;
   }
 
-  // 1. Parse via channel adapter
-  const parsed = adapter.parseInbound(rawBody);
-  if (!parsed) {
+  // 1. Parse via channel adapter — may return multiple messages (batch webhook)
+  const parsedMessages = adapter.parseInbound(rawBody);
+  if (parsedMessages.length === 0) {
     return; // Not a real message (e.g., status update)
   }
 
+  // Process each message in the batch
+  for (const parsed of parsedMessages) {
+    await processSingleMessage(adapter, channelType, parsed);
+  }
+}
+
+async function processSingleMessage(
+  adapter: ChannelAdapter,
+  channelType: string,
+  parsed: import("@kommand/shared").InboundMessage
+): Promise<void> {
   // 2. Deduplicate by channelMsgId
   if (isDuplicate(parsed.channelMessageId)) {
     console.log(`[pipeline] Duplicate message: ${parsed.channelMessageId}`);
@@ -93,16 +104,7 @@ export async function processInboundMessage(
   // 9. Send response via channel adapter
   const pending = await getPendingAction(tenantId);
 
-  if (response.files && response.files.length > 0) {
-    // Send files
-    for (const file of response.files) {
-      await adapter.sendFile(tenantId, parsed.from, file.url, file.filename);
-    }
-    // Also send the text portion
-    if (response.text) {
-      await adapter.sendText(tenantId, parsed.from, response.text);
-    }
-  } else if (pending) {
+  if (pending) {
     // Pending action → send with confirmation buttons
     await adapter.sendButtons(tenantId, parsed.from, response.text, [
       { id: "confirm_yes", title: "Yes" },
@@ -111,6 +113,13 @@ export async function processInboundMessage(
   } else {
     // Plain text
     await adapter.sendText(tenantId, parsed.from, response.text);
+  }
+
+  // 10. Mark read
+  if (adapter.markRead) {
+    adapter.markRead(parsed.channelMessageId).catch((err) => {
+      console.warn(`[pipeline] Failed to mark message read: ${err}`);
+    });
   }
 }
 
@@ -160,23 +169,27 @@ function checkRateLimit(tenantId: string): boolean {
   const minuteKey = `${tenantId}:minute`;
   const hourKey = `${tenantId}:hour`;
 
-  // Per-minute check
+  // Check both limits before incrementing either
   const minuteCounter = rateLimitCounters.get(minuteKey);
-  if (minuteCounter && now - minuteCounter.windowStart < 60) {
-    if (minuteCounter.count >= RATE_LIMIT_PER_MINUTE) {
-      return false;
-    }
+  const minuteActive = minuteCounter && now - minuteCounter.windowStart < 60;
+  if (minuteActive && minuteCounter.count >= RATE_LIMIT_PER_MINUTE) {
+    return false;
+  }
+
+  const hourCounter = rateLimitCounters.get(hourKey);
+  const hourActive = hourCounter && now - hourCounter.windowStart < 3600;
+  if (hourActive && hourCounter.count >= RATE_LIMIT_PER_HOUR) {
+    return false;
+  }
+
+  // Increment only after both checks pass
+  if (minuteActive) {
     minuteCounter.count++;
   } else {
     rateLimitCounters.set(minuteKey, { count: 1, windowStart: now });
   }
 
-  // Per-hour check
-  const hourCounter = rateLimitCounters.get(hourKey);
-  if (hourCounter && now - hourCounter.windowStart < 3600) {
-    if (hourCounter.count >= RATE_LIMIT_PER_HOUR) {
-      return false;
-    }
+  if (hourActive) {
     hourCounter.count++;
   } else {
     rateLimitCounters.set(hourKey, { count: 1, windowStart: now });

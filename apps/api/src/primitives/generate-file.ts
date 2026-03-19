@@ -16,7 +16,7 @@ export const generateFileDef: PrimitiveDefinition = {
         enum: ["text/plain", "text/csv", "application/json", "text/markdown"],
       },
     },
-    required: ["filename", "content"],
+    required: ["filename", "content", "content_type"],
   },
   handler: generateFile,
 };

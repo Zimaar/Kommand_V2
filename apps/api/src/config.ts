@@ -4,14 +4,14 @@ import { z } from "zod";
 // Only DATABASE_URL, REDIS_URL, and core server vars are required.
 const isDev = process.env.NODE_ENV !== "production";
 
-// Treat empty strings as undefined so .default("") kicks in
-const emptyToUndefined = z.preprocess(
-  (v) => (v === "" || v === undefined ? undefined : v),
-  z.string().default("")
-);
-
-const optionalInDev = (base: z.ZodString) =>
-  isDev ? emptyToUndefined : base;
+/**
+ * In dev, treat empty/missing env vars as empty string ("") so the server boots
+ * without external service credentials. Downstream code must guard against "" values.
+ */
+const optionalInDev = (base: z.ZodTypeAny = z.string().min(1)) =>
+  isDev
+    ? z.preprocess((v) => (v === "" || v === undefined ? undefined : v), z.string().default(""))
+    : base;
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "production", "test"]).default("development"),
@@ -24,26 +24,26 @@ const envSchema = z.object({
   REDIS_URL: z.string().min(1),
 
   // AI
-  ANTHROPIC_API_KEY: isDev ? emptyToUndefined : z.string().startsWith("sk-ant-"),
+  ANTHROPIC_API_KEY: optionalInDev(z.string().startsWith("sk-ant-")),
 
   // Code sandbox
-  E2B_API_KEY: optionalInDev(z.string().min(1)),
+  E2B_API_KEY: optionalInDev(),
 
   // File storage
-  SUPABASE_URL: isDev ? emptyToUndefined : z.string().url(),
-  SUPABASE_SERVICE_KEY: optionalInDev(z.string().min(1)),
+  SUPABASE_URL: optionalInDev(z.string().url()),
+  SUPABASE_SERVICE_KEY: optionalInDev(),
   SUPABASE_STORAGE_BUCKET: z.string().default("kommand-files"),
 
   // WhatsApp
-  WHATSAPP_PHONE_NUMBER_ID: optionalInDev(z.string().min(1)),
-  WHATSAPP_BUSINESS_ACCOUNT_ID: optionalInDev(z.string().min(1)),
-  WHATSAPP_ACCESS_TOKEN: optionalInDev(z.string().min(1)),
+  WHATSAPP_PHONE_NUMBER_ID: optionalInDev(),
+  WHATSAPP_BUSINESS_ACCOUNT_ID: optionalInDev(),
+  WHATSAPP_ACCESS_TOKEN: optionalInDev(),
   WHATSAPP_VERIFY_TOKEN: z.string().default("kommand-verify"),
-  WHATSAPP_APP_SECRET: optionalInDev(z.string().min(1)),
+  WHATSAPP_APP_SECRET: optionalInDev(),
 
   // Shopify
-  SHOPIFY_API_KEY: optionalInDev(z.string().min(1)),
-  SHOPIFY_API_SECRET: optionalInDev(z.string().min(1)),
+  SHOPIFY_API_KEY: optionalInDev(),
+  SHOPIFY_API_SECRET: optionalInDev(),
   SHOPIFY_SCOPES: z
     .string()
     .default(
@@ -51,15 +51,15 @@ const envSchema = z.object({
     ),
 
   // Xero
-  XERO_CLIENT_ID: optionalInDev(z.string().min(1)),
-  XERO_CLIENT_SECRET: optionalInDev(z.string().min(1)),
+  XERO_CLIENT_ID: optionalInDev(),
+  XERO_CLIENT_SECRET: optionalInDev(),
 
   // Auth
-  CLERK_PUBLISHABLE_KEY: optionalInDev(z.string().min(1)),
-  CLERK_SECRET_KEY: optionalInDev(z.string().min(1)),
-  CLERK_WEBHOOK_SECRET: optionalInDev(z.string().min(1)),
+  CLERK_PUBLISHABLE_KEY: optionalInDev(),
+  CLERK_SECRET_KEY: optionalInDev(),
+  CLERK_WEBHOOK_SECRET: optionalInDev(),
 
-  // Encryption
+  // Encryption — dev default is a weak key; production requires a real 64-char hex key
   ENCRYPTION_KEY: isDev
     ? z.preprocess(
         (v) => (v === "" || v === undefined ? undefined : v),

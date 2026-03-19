@@ -26,7 +26,7 @@ export class AppError extends Error {
     isOperational = true
   ) {
     super(message);
-    this.name = "AppError";
+    this.name = this.constructor.name;
     this.isOperational = isOperational;
   }
 }
