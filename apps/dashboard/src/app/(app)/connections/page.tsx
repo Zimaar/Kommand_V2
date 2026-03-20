@@ -221,13 +221,13 @@ export default function ConnectionsPage(): React.ReactElement {
   const [data, setData] = useState<ConnectionsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [banner, setBanner] = useState("");
+  const [banner, setBanner] = useState<{ message: string; type: "success" | "error" } | null>(null);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.get("connected") === "xero") { setBanner("Xero connected successfully."); }
-    if (params.get("error") === "xero_oauth_failed") { setBanner("Xero connection failed. Please try again."); }
-    if (params.get("error") === "xero_denied") { setBanner("Xero connection cancelled."); }
+    if (params.get("connected") === "xero") { setBanner({ message: "Xero connected successfully.", type: "success" }); }
+    if (params.get("error") === "xero_oauth_failed") { setBanner({ message: "Xero connection failed. Please try again.", type: "error" }); }
+    if (params.get("error") === "xero_denied") { setBanner({ message: "Xero connection cancelled.", type: "error" }); }
     // Strip query params without full reload
     if (params.toString()) {
       window.history.replaceState({}, "", window.location.pathname);
@@ -314,9 +314,9 @@ export default function ConnectionsPage(): React.ReactElement {
 
       {/* Banner */}
       {banner && (
-        <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl p-4 flex items-center justify-between">
-          {banner}
-          <button type="button" onClick={() => setBanner("")} className="text-green-500 hover:text-green-700 ml-3">✕</button>
+        <div className={`${banner.type === "success" ? "bg-green-50 border-green-200 text-green-700" : "bg-red-50 border-red-200 text-red-700"} border text-sm rounded-xl p-4 flex items-center justify-between`}>
+          {banner.message}
+          <button type="button" onClick={() => setBanner(null)} className={`${banner.type === "success" ? "text-green-500 hover:text-green-700" : "text-red-500 hover:text-red-700"} ml-3`}>✕</button>
         </div>
       )}
 

@@ -44,6 +44,23 @@ The `process.env["DATABASE_URL"] ??=` / `REDIS_URL` / `ENCRYPTION_KEY` defaults 
 
 ---
 
+---
+
+## M7 — Xero
+
+### Single Xero org assumption — no multi-org selection
+**File:** `apps/api/src/routes/auth.ts` → `xero/callback`
+
+`getXeroTenants()` returns all orgs the authenticated user has access to. The callback always picks `xeroTenants[0]` and discards the rest. Users with access to multiple Xero orgs (accountants, franchises) will silently connect whichever org Xero happens to list first.
+
+**Fix:** After token exchange, if `xeroTenants.length > 1`, redirect to a picker page (e.g. `/connections/xero/pick?state=...`) that lists org names and lets the owner choose. Store the pending tokens in Redis under the state key until selection is made. For orgs with a single tenant this is a no-op.
+
+Risk at current stage is low (target: single-location SMBs), but must be addressed before launch.
+
+---
+
+## M8 — Performance
+
 ### E2B pip install on every sandbox run (run-code.ts)
 **File:** `apps/api/src/primitives/run-code.ts`
 

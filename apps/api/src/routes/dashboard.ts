@@ -17,6 +17,7 @@ import { sendError, UnauthorizedError, NotFoundError } from "../utils/errors.js"
 import { sendTextToPhone } from "../channels/whatsapp.js";
 import { buildShopifyInstallUrl } from "../auth/shopify-oauth.js";
 import { generatePKCE, buildXeroAuthUrl } from "../auth/xero-oauth.js";
+import { NONCE_TTL_SECONDS } from "./auth.js";
 import { redis } from "../lib/redis.js";
 
 // Middleware: resolve tenant from Clerk JWT
@@ -539,7 +540,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         `oauth:xero:${state}`,
         JSON.stringify({ tenantId, verifier }),
         "EX",
-        300
+        NONCE_TTL_SECONDS
       );
 
       const url = buildXeroAuthUrl(state, challenge);

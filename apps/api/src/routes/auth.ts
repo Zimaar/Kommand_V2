@@ -17,8 +17,8 @@ import {
   saveXeroConnection,
 } from "../auth/xero-oauth.js";
 
-// Nonce TTL: 5 minutes
-const NONCE_TTL_SECONDS = 300;
+// Nonce TTL: 5 minutes — exported so dashboard routes can share the same value
+export const NONCE_TTL_SECONDS = 300;
 
 function nonceKey(state: string): string {
   return `oauth:nonce:${state}`;
@@ -91,28 +91,10 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   });
 
   // ─── Xero OAuth ─────────────────────────────────────────────────────────────
-
-  // GET /auth/xero?tenant_id={id}
-  // Generates PKCE verifier, stores { tenantId, verifier } in Redis, redirects to Xero
-  app.get("/xero", async (req: FastifyRequest, reply: FastifyReply) => {
-    const { tenant_id: tenantId } = req.query as Record<string, string>;
-
-    if (!tenantId) {
-      return reply.status(400).send({ error: "Missing tenant_id" });
-    }
-
-    const state = crypto.randomUUID();
-    const { verifier, challenge } = generatePKCE();
-
-    await redis.set(
-      `oauth:xero:${state}`,
-      JSON.stringify({ tenantId, verifier }),
-      "EX",
-      NONCE_TTL_SECONDS
-    );
-
-    return reply.redirect(buildXeroAuthUrl(state, challenge));
-  });
+  // OAuth is initiated via POST /api/dashboard/connections/xero/initiate (authenticated).
+  // There is intentionally no unauthenticated GET /auth/xero initiation route — accepting
+  // an arbitrary tenant_id query param without auth would let any caller bind their
+  // Xero org to another tenant's account.
 
   // GET /auth/xero/callback?code=&state=
   // Validates state, exchanges code with PKCE verifier, stores encrypted tokens in DB

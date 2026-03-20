@@ -3,6 +3,7 @@ import { db } from "../db/connection.js";
 import { accountingConnections } from "../db/schema.js";
 import { encryptToken, decryptToken } from "./encryption.js";
 import { redis } from "../lib/redis.js";
+import { config } from "../config.js";
 
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
 
@@ -88,6 +89,12 @@ async function refreshWithLock(tenantId: string, conn: XeroConnection): Promise<
     if (!fresh) {
       throw new Error(`Xero connection disappeared during refresh for tenant ${tenantId}`);
     }
+    // Verify the winning process actually succeeded — if the token is still
+    // expired, the refresh failed and we must not return a stale token.
+    const freshExpiresAt = fresh.tokenExpiresAt?.getTime() ?? 0;
+    if (Date.now() >= freshExpiresAt - REFRESH_THRESHOLD_MS) {
+      throw new Error(`Xero token still expired after waiting for peer refresh — tenant ${tenantId}`);
+    }
     return decryptToken(fresh.accessTokenEnc, fresh.tokenIv, fresh.tokenTag);
   }
 
@@ -113,9 +120,6 @@ async function callXeroRefresh(refreshToken: string): Promise<{
   newRefreshToken: string;
   expiresIn: number;
 }> {
-  // Client credentials come from env — safe to import lazily to avoid circular deps
-  const { config } = await import("../config.js");
-
   const res = await fetch(XERO_TOKEN_URL, {
     method: "POST",
     headers: {
