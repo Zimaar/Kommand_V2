@@ -6,7 +6,6 @@ import {
   stores,
   accountingConnections,
   messages,
-  memories,
 } from "../db/schema.js";
 import type {
   AgentContext,
@@ -17,13 +16,11 @@ import type {
   MemoryEntry,
   PrimitiveName,
 } from "@kommand/shared";
-import {
-  CONVERSATION_HISTORY_LENGTH,
-  MEMORY_RETRIEVAL_COUNT,
-} from "../config.js";
+import { CONVERSATION_HISTORY_LENGTH } from "../config.js";
+import { searchMemories } from "../utils/embeddings.js";
 
-export async function buildContext(tenantId: string): Promise<AgentContext> {
-  const [tenant, storeRows, connectionRows, historyRows, memoryRows] = await Promise.all([
+export async function buildContext(tenantId: string, currentMessage?: string): Promise<AgentContext> {
+  const [tenant, storeRows, connectionRows, historyRows] = await Promise.all([
     db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1),
     db.select().from(stores).where(and(eq(stores.tenantId, tenantId), eq(stores.isActive, true))),
     db
@@ -41,14 +38,10 @@ export async function buildContext(tenantId: string): Promise<AgentContext> {
       .where(eq(messages.tenantId, tenantId))
       .orderBy(desc(messages.createdAt))
       .limit(CONVERSATION_HISTORY_LENGTH),
-    // TODO: replace with vector similarity search when pgvector is enabled
-    db
-      .select()
-      .from(memories)
-      .where(and(eq(memories.tenantId, tenantId), eq(memories.isActive, true)))
-      .orderBy(desc(memories.createdAt))
-      .limit(MEMORY_RETRIEVAL_COUNT),
   ]);
+
+  // Vector similarity search using the current message as query (falls back to recency if no embedding key)
+  const memoryRows = await searchMemories(tenantId, currentMessage ?? "");
 
   const tenantRow = tenant[0];
   if (!tenantRow) {
@@ -100,12 +93,7 @@ export async function buildContext(tenantId: string): Promise<AgentContext> {
       content: m.content,
     }));
 
-  const businessMemory: MemoryEntry[] = memoryRows.map((m) => ({
-    id: m.id,
-    content: m.content,
-    category: m.category as MemoryEntry["category"],
-    createdAt: m.createdAt,
-  }));
+  const businessMemory: MemoryEntry[] = memoryRows;
 
   const currentTime = formatInTimeZone(new Date(), tenantInfo.timezone, "PPpp zzz");
 

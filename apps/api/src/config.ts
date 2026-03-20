@@ -25,6 +25,7 @@ const envSchema = z.object({
 
   // AI
   ANTHROPIC_API_KEY: optionalInDev(z.string().startsWith("sk-ant-")),
+  OPENAI_API_KEY: optionalInDev(),
 
   // Code sandbox
   E2B_API_KEY: optionalInDev(),

@@ -44,8 +44,8 @@ export async function runAgent(
   const primitiveLogs: PrimitiveCallLog[] = [];
 
   try {
-    // 1. Load context
-    const context = await buildContext(tenantId);
+    // 1. Load context (pass current message for vector similarity memory retrieval)
+    const context = await buildContext(tenantId, inboundMessage);
 
     // 2. Check for pending confirmation
     const pending = await getPendingAction(tenantId);

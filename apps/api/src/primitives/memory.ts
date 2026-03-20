@@ -1,6 +1,9 @@
 import type { PrimitiveResponse } from "@kommand/shared";
 import type { PrimitiveDefinition } from "./types.js";
 import { MemoryInputSchema } from "@kommand/shared";
+import { db } from "../db/connection.js";
+import { memories } from "../db/schema.js";
+import { generateEmbedding, searchMemories } from "../utils/embeddings.js";
 
 export const memoryDef: PrimitiveDefinition = {
   name: "memory",
@@ -29,23 +32,44 @@ export const memoryDef: PrimitiveDefinition = {
   handler: memoryHandler,
 };
 
-// Mock — real implementation in M6
-async function memoryHandler(input: unknown, _tenantId: string): Promise<PrimitiveResponse> {
+async function memoryHandler(
+  input: unknown,
+  tenantId: string,
+  runId?: string
+): Promise<PrimitiveResponse> {
   const parsed = MemoryInputSchema.safeParse(input);
   if (!parsed.success) {
     return { success: false, error: `Invalid input: ${parsed.error.message}` };
   }
 
   if (parsed.data.action === "write") {
-    return { success: true, data: { stored: true, id: "mock-memory-id" } };
+    const embedding = await generateEmbedding(parsed.data.query);
+
+    const [inserted] = await db
+      .insert(memories)
+      .values({
+        tenantId,
+        content: parsed.data.query,
+        category: parsed.data.category ?? "observation",
+        ...(runId ? { sourceRunId: runId } : {}),
+        ...(embedding ? { embedding } : {}),
+      })
+      .returning({ id: memories.id });
+
+    return { success: true, data: { stored: true, id: inserted!.id } };
   }
+
+  // action === "read"
+  const results = await searchMemories(tenantId, parsed.data.query);
 
   return {
     success: true,
     data: {
-      memories: [
-        { content: "Mock memory entry", category: "observation", createdAt: new Date().toISOString() },
-      ],
+      memories: results.map((m) => ({
+        content: m.content,
+        category: m.category,
+        createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
+      })),
     },
   };
 }
