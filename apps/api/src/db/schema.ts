@@ -245,6 +245,31 @@ export const scheduledJobs = pgTable(
   ]
 );
 
+// ─── subscriptions ───────────────────────────────────────────────────────────
+
+export const subscriptions = pgTable(
+  "subscriptions",
+  {
+    id: uuid("id").primaryKey().default(sql`gen_random_uuid()`),
+    tenantId: uuid("tenant_id")
+      .notNull()
+      .references(() => tenants.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(), // shopify | stripe
+    externalId: text("external_id").notNull(), // Shopify charge_id or Stripe subscription_id
+    plan: text("plan").notNull(), // starter | growth | pro
+    status: text("status").default("pending").notNull(), // pending | active | cancelled | expired
+    trialEndsAt: timestamp("trial_ends_at", { withTimezone: true }),
+    currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
+    cancelledAt: timestamp("cancelled_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [
+    uniqueIndex("subscriptions_provider_external_idx").on(t.provider, t.externalId),
+    index("subscriptions_tenant_idx").on(t.tenantId),
+  ]
+);
+
 // ─── generated_files ──────────────────────────────────────────────────────────
 
 export const generatedFiles = pgTable(
@@ -280,6 +305,7 @@ export const tenantsRelations = relations(tenants, ({ many }) => ({
   memories: many(memories),
   scheduledJobs: many(scheduledJobs),
   generatedFiles: many(generatedFiles),
+  subscriptions: many(subscriptions),
 }));
 
 export const storesRelations = relations(stores, ({ one }) => ({
@@ -322,4 +348,8 @@ export const scheduledJobsRelations = relations(scheduledJobs, ({ one }) => ({
 export const generatedFilesRelations = relations(generatedFiles, ({ one }) => ({
   tenant: one(tenants, { fields: [generatedFiles.tenantId], references: [tenants.id] }),
   agentRun: one(agentRuns, { fields: [generatedFiles.agentRunId], references: [agentRuns.id] }),
+}));
+
+export const subscriptionsRelations = relations(subscriptions, ({ one }) => ({
+  tenant: one(tenants, { fields: [subscriptions.tenantId], references: [tenants.id] }),
 }));

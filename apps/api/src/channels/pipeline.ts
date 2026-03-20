@@ -3,6 +3,7 @@ import { db } from "../db/connection.js";
 import { channels, messages } from "../db/schema.js";
 import { runAgent } from "../agent/loop.js";
 import { getPendingAction } from "../agent/confirmation.js";
+import { checkBilling } from "../billing/guard.js";
 import type { ChannelAdapter } from "./types.js";
 import type { ChannelType } from "@kommand/shared";
 
@@ -95,6 +96,13 @@ async function processSingleMessage(
       tenantId,
       "You're sending messages too fast. Please wait a moment and try again."
     );
+    return;
+  }
+
+  // 6b. Check billing — active subscription or valid trial required
+  const billing = await checkBilling(tenantId);
+  if (!billing.allowed) {
+    await adapter.sendText(tenantId, billing.reason);
     return;
   }
 

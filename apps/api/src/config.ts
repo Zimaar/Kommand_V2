@@ -63,6 +63,13 @@ const envSchema = z.object({
   CLERK_SECRET_KEY: optionalInDev(),
   CLERK_WEBHOOK_SECRET: optionalInDev(),
 
+  // Stripe (direct billing — non-Shopify signups)
+  STRIPE_SECRET_KEY: optionalInDev(),
+  STRIPE_WEBHOOK_SECRET: optionalInDev(),
+  STRIPE_PRICE_STARTER: optionalInDev(),
+  STRIPE_PRICE_GROWTH: optionalInDev(),
+  STRIPE_PRICE_PRO: optionalInDev(),
+
   // Encryption — dev default is a weak key; production requires a real 64-char hex key
   ENCRYPTION_KEY: isDev
     ? z.preprocess(
@@ -97,6 +104,14 @@ export const MAX_AGENT_ITERATIONS = 25;
 export const CONVERSATION_HISTORY_LENGTH = 15;
 export const MEMORY_RETRIEVAL_COUNT = 20;
 export const PENDING_ACTION_EXPIRY_MINUTES = 10;
+
+export const TRIAL_DAYS = 14;
+
+export const PLAN_PRICES: Record<string, { amount: number; name: string }> = {
+  starter: { amount: 29.0, name: "Starter" },
+  growth: { amount: 59.0, name: "Growth" },
+  pro: { amount: 149.0, name: "Pro" },
+};
 
 export const TOKEN_LIMITS: Record<string, number> = {
   trial: 30000,

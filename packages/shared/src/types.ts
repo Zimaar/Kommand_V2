@@ -1,6 +1,8 @@
 // Core domain types for Kommand
 
-export type TenantPlan = "trial" | "starter" | "growth" | "pro";
+export type TenantPlan = "trial" | "starter" | "growth" | "pro" | "expired";
+export type BillingProvider = "shopify" | "stripe";
+export type SubscriptionStatus = "pending" | "active" | "cancelled" | "expired";
 export type StorePlatform = "shopify" | "woocommerce";
 export type AccountingPlatform = "xero" | "quickbooks";
 export type ChannelType = "whatsapp" | "slack" | "email";

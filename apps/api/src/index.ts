@@ -10,6 +10,7 @@ import { webhookRoutes } from "./routes/webhooks.js";
 import { shopifyWebhookRoutes } from "./routes/shopify-webhooks.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { authRoutes } from "./routes/auth.js";
+import { billingRoutes } from "./routes/billing.js";
 import { redis } from "./lib/redis.js";
 import { scheduler } from "./proactive/scheduler.js";
 
@@ -80,6 +81,7 @@ await app.register(authRoutes, { prefix: "/auth" });
 await app.register(webhookRoutes, { prefix: "/webhooks" });
 await app.register(shopifyWebhookRoutes, { prefix: "/webhooks" });
 await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
+await app.register(billingRoutes, { prefix: "/billing" });
 
 // ─── Graceful shutdown ────────────────────────────────────────────────────────
 
