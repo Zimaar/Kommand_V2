@@ -1,46 +1,101 @@
 "use client";
 
 import { useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
-import Link from "next/link";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+
+// ─── Data ────────────────────────────────────────────────────────────────────
+
+const COUNTRY_CODES = [
+  { code: "+971", label: "🇦🇪 +971" },
+  { code: "+1", label: "🇺🇸 +1" },
+  { code: "+44", label: "🇬🇧 +44" },
+  { code: "+61", label: "🇦🇺 +61" },
+  { code: "+91", label: "🇮🇳 +91" },
+  { code: "+65", label: "🇸🇬 +65" },
+  { code: "+966", label: "🇸🇦 +966" },
+  { code: "+49", label: "🇩🇪 +49" },
+  { code: "+33", label: "🇫🇷 +33" },
+  { code: "+86", label: "🇨🇳 +86" },
+  { code: "+81", label: "🇯🇵 +81" },
+  { code: "+82", label: "🇰🇷 +82" },
+  { code: "+55", label: "🇧🇷 +55" },
+  { code: "+52", label: "🇲🇽 +52" },
+  { code: "+27", label: "🇿🇦 +27" },
+];
+
+const TIMEZONES = [
+  { value: "America/New_York", label: "Eastern — UTC−5" },
+  { value: "America/Chicago", label: "Central — UTC−6" },
+  { value: "America/Denver", label: "Mountain — UTC−7" },
+  { value: "America/Los_Angeles", label: "Pacific — UTC−8" },
+  { value: "America/Sao_Paulo", label: "São Paulo — UTC−3" },
+  { value: "UTC", label: "UTC" },
+  { value: "Europe/London", label: "London — UTC+0" },
+  { value: "Europe/Paris", label: "Paris — UTC+1" },
+  { value: "Europe/Moscow", label: "Moscow — UTC+3" },
+  { value: "Asia/Dubai", label: "Dubai — UTC+4" },
+  { value: "Asia/Kolkata", label: "Mumbai — UTC+5:30" },
+  { value: "Asia/Dhaka", label: "Dhaka — UTC+6" },
+  { value: "Asia/Bangkok", label: "Bangkok — UTC+7" },
+  { value: "Asia/Singapore", label: "Singapore — UTC+8" },
+  { value: "Asia/Tokyo", label: "Tokyo — UTC+9" },
+  { value: "Australia/Sydney", label: "Sydney — UTC+11" },
+];
+
+const CURRENCIES = [
+  { value: "USD", label: "USD — US Dollar" },
+  { value: "EUR", label: "EUR — Euro" },
+  { value: "GBP", label: "GBP — British Pound" },
+  { value: "AED", label: "AED — UAE Dirham" },
+  { value: "AUD", label: "AUD — Australian Dollar" },
+  { value: "CAD", label: "CAD — Canadian Dollar" },
+  { value: "SGD", label: "SGD — Singapore Dollar" },
+  { value: "INR", label: "INR — Indian Rupee" },
+  { value: "SAR", label: "SAR — Saudi Riyal" },
+  { value: "BRL", label: "BRL — Brazilian Real" },
+  { value: "ZAR", label: "ZAR — South African Rand" },
+  { value: "JPY", label: "JPY — Japanese Yen" },
+];
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type ActiveStep = 1 | 2 | 3;
+
+interface NotifPrefs {
+  newOrders: boolean;
+  lowStock: boolean;
+  dailyBrief: boolean;
+}
 
 // ─── Progress indicator ───────────────────────────────────────────────────────
 
 const STEPS = [
   { id: 1 as const, label: "Connect Shopify" },
   { id: 2 as const, label: "Link WhatsApp" },
-  { id: 3 as const, label: "Done" },
+  { id: 3 as const, label: "Preferences" },
 ];
 
 function ProgressIndicator({
   activeStep,
-  shopifyDone,
   shopDomain,
 }: {
   activeStep: ActiveStep;
-  shopifyDone: boolean;
   shopDomain: string;
 }): React.ReactElement {
   return (
     <div className="flex items-start justify-between relative px-1">
-      {/* Connecting line */}
       <div className="absolute top-4 left-8 right-8 h-px bg-gray-200" />
 
       {STEPS.map((step) => {
-        const isDone = (step.id === 1 && shopifyDone) || (step.id === 2 && activeStep > 2);
-        const isActive = step.id === activeStep && !isDone;
+        const isDone = step.id < activeStep;
+        const isActive = step.id === activeStep;
         const isFuture = step.id > activeStep;
 
         return (
           <div key={step.id} className="relative z-10 flex flex-col items-center gap-2 flex-1">
-            {/* Dot */}
             <div
               className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold border-2 transition-colors ${
                 isDone
@@ -52,24 +107,56 @@ function ProgressIndicator({
             >
               {isDone ? "✓" : step.id}
             </div>
-
-            {/* Label */}
             <p
               className={`text-xs font-medium text-center leading-tight ${
-                isDone ? "text-green-600" : isActive ? "text-[#534AB7]" : isFuture ? "text-gray-400" : "text-gray-600"
+                isDone
+                  ? "text-green-600"
+                  : isActive
+                  ? "text-[#534AB7]"
+                  : isFuture
+                  ? "text-gray-400"
+                  : "text-gray-600"
               }`}
             >
               {step.label}
             </p>
-
-            {/* Step 1 completion detail */}
             {step.id === 1 && isDone && shopDomain && (
-              <p className="text-[10px] text-green-600 text-center truncate max-w-[80px]">{shopDomain}</p>
+              <p className="text-[10px] text-green-600 text-center truncate max-w-[80px]">
+                {shopDomain}
+              </p>
             )}
           </div>
         );
       })}
     </div>
+  );
+}
+
+// ─── Toggle ───────────────────────────────────────────────────────────────────
+
+function Toggle({
+  checked,
+  onChange,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+}): React.ReactElement {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      onClick={() => onChange(!checked)}
+      className={`relative inline-flex h-5 w-10 shrink-0 items-center rounded-full transition-colors ${
+        checked ? "bg-[#534AB7]" : "bg-gray-200"
+      }`}
+    >
+      <span
+        className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
+          checked ? "translate-x-5" : "translate-x-1"
+        }`}
+      />
+    </button>
   );
 }
 
@@ -116,7 +203,6 @@ function StepShopify({
           />
           {shopError && <p className="text-red-500 text-xs mt-1.5">{shopError}</p>}
         </div>
-
         <button
           type="button"
           onClick={onConnect}
@@ -143,22 +229,55 @@ function StepShopify({
 // ─── Step 2 — Link WhatsApp ───────────────────────────────────────────────────
 
 function StepWhatsApp({
-  phone,
-  setPhone,
+  countryCode,
+  setCountryCode,
+  phoneNumber,
+  setPhoneNumber,
   phoneError,
   linking,
+  linked,
   shopifyDone,
   onLink,
+  onContinue,
   onSkip,
 }: {
-  phone: string;
-  setPhone: (v: string) => void;
+  countryCode: string;
+  setCountryCode: (v: string) => void;
+  phoneNumber: string;
+  setPhoneNumber: (v: string) => void;
   phoneError: string;
   linking: boolean;
+  linked: boolean;
   shopifyDone: boolean;
   onLink: () => void;
+  onContinue: () => void;
   onSkip: () => void;
 }): React.ReactElement {
+  // After successful link: show confirmation message
+  if (linked) {
+    return (
+      <div className="text-center py-2">
+        <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-4">
+          <span className="text-2xl">✅</span>
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 mb-2">WhatsApp linked!</h2>
+        <p className="text-sm text-gray-500 mb-2">
+          We sent you a welcome message on WhatsApp. Check your messages to confirm it arrived.
+        </p>
+        <p className="text-xs text-gray-400 mb-8">
+          Not there yet? It can take up to 60 seconds.
+        </p>
+        <button
+          type="button"
+          onClick={onContinue}
+          className="w-full bg-[#534AB7] hover:bg-[#4540a0] text-white py-3 rounded-xl text-sm font-semibold transition-colors"
+        >
+          Continue to preferences →
+        </button>
+      </div>
+    );
+  }
+
   return (
     <>
       {shopifyDone && (
@@ -181,23 +300,36 @@ function StepWhatsApp({
       <div className="space-y-3">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1.5">WhatsApp number</label>
-          <input
-            type="tel"
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { onLink(); } }}
-            placeholder="+971 50 123 4567"
-            disabled={linking}
-            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7] disabled:opacity-50 transition-colors"
-          />
+          <div className="flex gap-2">
+            <select
+              value={countryCode}
+              onChange={(e) => setCountryCode(e.target.value)}
+              disabled={linking}
+              className="border border-gray-200 rounded-xl px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7] bg-white disabled:opacity-50 transition-colors shrink-0"
+            >
+              {COUNTRY_CODES.map((c) => (
+                <option key={c.code} value={c.code}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+            <input
+              type="tel"
+              value={phoneNumber}
+              onChange={(e) => setPhoneNumber(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") { onLink(); } }}
+              placeholder="50 123 4567"
+              disabled={linking}
+              className="flex-1 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7] disabled:opacity-50 transition-colors"
+            />
+          </div>
           {phoneError && <p className="text-red-500 text-xs mt-1.5">{phoneError}</p>}
-          <p className="text-xs text-gray-400 mt-1.5">Include country code, e.g. +971501234567</p>
+          <p className="text-xs text-gray-400 mt-1.5">Local number without country code</p>
         </div>
-
         <button
           type="button"
           onClick={onLink}
-          disabled={linking || !phone.trim()}
+          disabled={linking || !phoneNumber.trim()}
           className="w-full bg-[#534AB7] hover:bg-[#4540a0] disabled:opacity-50 text-white py-3 rounded-xl text-sm font-semibold transition-colors"
         >
           {linking ? "Linking…" : "Link WhatsApp"}
@@ -217,32 +349,149 @@ function StepWhatsApp({
   );
 }
 
-// ─── Step 3 — Done ────────────────────────────────────────────────────────────
+// ─── Step 3 — Preferences ────────────────────────────────────────────────────
 
-function StepDone(): React.ReactElement {
+function StepPreferences({
+  timezone,
+  setTimezone,
+  currency,
+  setCurrency,
+  briefTime,
+  setBriefTime,
+  notifications,
+  setNotifications,
+  saving,
+  saveError,
+  onSave,
+}: {
+  timezone: string;
+  setTimezone: (v: string) => void;
+  currency: string;
+  setCurrency: (v: string) => void;
+  briefTime: string;
+  setBriefTime: (v: string) => void;
+  notifications: NotifPrefs;
+  setNotifications: (v: NotifPrefs) => void;
+  saving: boolean;
+  saveError: string;
+  onSave: () => void;
+}): React.ReactElement {
+  function toggleNotif(key: keyof NotifPrefs): void {
+    setNotifications({ ...notifications, [key]: !notifications[key] });
+  }
+
   return (
-    <div className="text-center py-4">
-      <div className="w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-5">
-        <span className="text-3xl">✅</span>
+    <>
+      <div className="mb-6">
+        <div className="w-12 h-12 rounded-2xl bg-purple-50 flex items-center justify-center mb-4">
+          <span className="text-2xl">⚙️</span>
+        </div>
+        <h2 className="text-xl font-bold text-gray-900 mb-1">Set your preferences</h2>
+        <p className="text-sm text-gray-500">Kommand uses these to tailor your daily brief and alerts.</p>
       </div>
-      <h2 className="text-xl font-bold text-gray-900 mb-2">You&apos;re all set!</h2>
-      <p className="text-sm text-gray-500 mb-8 max-w-xs mx-auto">
-        Send a WhatsApp message to your Kommand number to get started. Try: &ldquo;How&apos;s my store doing?&rdquo;
-      </p>
-      <Link
-        href="/overview"
-        className="inline-block bg-[#534AB7] hover:bg-[#4540a0] text-white px-8 py-3 rounded-xl text-sm font-semibold transition-colors"
-      >
-        Go to dashboard
-      </Link>
-    </div>
+
+      <div className="space-y-5">
+        {/* Timezone */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Timezone</label>
+          <select
+            value={timezone}
+            onChange={(e) => setTimezone(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7] transition-colors"
+          >
+            {/* Show detected timezone if not in list */}
+            {!TIMEZONES.some((t) => t.value === timezone) && (
+              <option value={timezone}>{timezone} (detected)</option>
+            )}
+            {TIMEZONES.map((tz) => (
+              <option key={tz.value} value={tz.value}>
+                {tz.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Morning brief time */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Morning brief time</label>
+          <input
+            type="time"
+            value={briefTime}
+            onChange={(e) => setBriefTime(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7] transition-colors"
+          />
+          <p className="text-xs text-gray-400 mt-1.5">Kommand will send your store summary at this time each day.</p>
+        </div>
+
+        {/* Currency */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1.5">Display currency</label>
+          <select
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+            className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-[#534AB7]/30 focus:border-[#534AB7] transition-colors"
+          >
+            {CURRENCIES.map((c) => (
+              <option key={c.value} value={c.value}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Notifications */}
+        <div>
+          <p className="text-sm font-medium text-gray-700 mb-3">Notifications</p>
+          <div className="space-y-3">
+            {(
+              [
+                { key: "dailyBrief", label: "Daily brief", desc: "Morning summary sent to WhatsApp" },
+                { key: "newOrders", label: "New orders", desc: "Alert when orders come in" },
+                { key: "lowStock", label: "Low stock alerts", desc: "When inventory drops below threshold" },
+              ] as { key: keyof NotifPrefs; label: string; desc: string }[]
+            ).map(({ key, label, desc }) => (
+              <div key={key} className="flex items-center justify-between gap-4">
+                <div className="min-w-0">
+                  <p className="text-sm text-gray-800 font-medium">{label}</p>
+                  <p className="text-xs text-gray-400">{desc}</p>
+                </div>
+                <Toggle
+                  checked={notifications[key]}
+                  onChange={() => toggleNotif(key)}
+                />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {saveError && <p className="text-red-500 text-xs">{saveError}</p>}
+
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving}
+          className="w-full bg-[#534AB7] hover:bg-[#4540a0] disabled:opacity-50 text-white py-3 rounded-xl text-sm font-semibold transition-colors"
+        >
+          {saving ? "Saving…" : "Complete Setup"}
+        </button>
+      </div>
+    </>
   );
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+function detectTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone;
+  } catch {
+    return "UTC";
+  }
+}
+
 export default function OnboardingPage(): React.ReactElement {
   const searchParams = useSearchParams();
+  const router = useRouter();
   const { userId, getToken } = useAuth();
 
   const connectedParam = searchParams.get("connected");
@@ -254,7 +503,6 @@ export default function OnboardingPage(): React.ReactElement {
     stepParam === "2" || connectedParam === "shopify" ? 2 : 1;
 
   const [activeStep, setActiveStep] = useState<ActiveStep>(initialStep);
-  const [shopifyDone, setShopifyDone] = useState(connectedParam === "shopify");
   const [shopDomain, setShopDomain] = useState(shopParam);
 
   // Step 1
@@ -265,17 +513,36 @@ export default function OnboardingPage(): React.ReactElement {
   const [connecting, setConnecting] = useState(false);
 
   // Step 2
-  const [phone, setPhone] = useState("");
+  const [countryCode, setCountryCode] = useState("+971");
+  const [phoneNumber, setPhoneNumber] = useState("");
   const [phoneError, setPhoneError] = useState("");
   const [linking, setLinking] = useState(false);
+  const [whatsappLinked, setWhatsappLinked] = useState(false);
+
+  // Step 3
+  const [timezone, setTimezone] = useState(detectTimezone);
+  const [currency, setCurrency] = useState("USD");
+  const [briefTime, setBriefTime] = useState("08:00");
+  const [notifications, setNotifications] = useState<NotifPrefs>({
+    newOrders: true,
+    lowStock: true,
+    dailyBrief: true,
+  });
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState("");
+
+  async function authHeaders(): Promise<Record<string, string>> {
+    const token = await getToken();
+    return {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(userId ? { "x-tenant-id": userId } : {}),
+    };
+  }
 
   async function initiateShopify(): Promise<void> {
     let shop = shopInput.trim().toLowerCase();
-
-    // Auto-complete: if no dot, assume it's just the subdomain
-    if (!shop.includes(".")) {
-      shop = `${shop}.myshopify.com`;
-    }
+    if (!shop.includes(".")) { shop = `${shop}.myshopify.com`; }
 
     if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(shop)) {
       setShopError("Use format: yourstore.myshopify.com");
@@ -286,14 +553,9 @@ export default function OnboardingPage(): React.ReactElement {
     setConnecting(true);
 
     try {
-      const token = await getToken();
       const res = await fetch(`${API_URL}/api/dashboard/connections/shopify/initiate`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...(userId ? { "x-tenant-id": userId } : {}),
-        },
+        headers: await authHeaders(),
         body: JSON.stringify({ shop }),
       });
 
@@ -313,25 +575,21 @@ export default function OnboardingPage(): React.ReactElement {
   }
 
   async function linkWhatsApp(): Promise<void> {
-    const digits = phone.replace(/\D/g, "");
-    if (digits.length < 8) {
-      setPhoneError("Enter a valid phone number with country code");
+    const digits = phoneNumber.replace(/\D/g, "");
+    if (digits.length < 6) {
+      setPhoneError("Enter a valid local phone number");
       return;
     }
 
+    const full = `${countryCode}${digits}`;
     setPhoneError("");
     setLinking(true);
 
     try {
-      const token = await getToken();
       const res = await fetch(`${API_URL}/api/dashboard/whatsapp/link`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          ...(userId ? { "x-tenant-id": userId } : {}),
-        },
-        body: JSON.stringify({ phone: `+${digits}` }),
+        headers: await authHeaders(),
+        body: JSON.stringify({ phone: full }),
       });
 
       if (!res.ok) {
@@ -340,7 +598,7 @@ export default function OnboardingPage(): React.ReactElement {
         return;
       }
 
-      setActiveStep(3);
+      setWhatsappLinked(true);
     } catch {
       setPhoneError("Network error — check your connection and try again.");
     } finally {
@@ -348,21 +606,44 @@ export default function OnboardingPage(): React.ReactElement {
     }
   }
 
+  async function savePreferences(): Promise<void> {
+    setSaveError("");
+    setSaving(true);
+
+    try {
+      const res = await fetch(`${API_URL}/api/dashboard/preferences`, {
+        method: "PUT",
+        headers: await authHeaders(),
+        body: JSON.stringify({ timezone, currency, briefTime, notifications }),
+      });
+
+      if (!res.ok) {
+        const data = (await res.json().catch(() => ({}))) as { error?: string };
+        setSaveError(data.error ?? "Failed to save preferences. Please try again.");
+        return;
+      }
+
+      router.push("/overview?welcome=1");
+    } catch {
+      setSaveError("Network error — check your connection and try again.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const shopifyDone = connectedParam === "shopify" || (activeStep > 1 && !!shopDomain);
+
   return (
     <div className="flex items-start justify-center min-h-full py-12 px-4">
       <div className="w-full max-w-md">
         {/* Header */}
         <div className="text-center mb-8">
           <h1 className="text-2xl font-bold text-gray-900">Set up Kommand</h1>
-          <p className="text-sm text-gray-500 mt-1">2 quick steps to connect your store.</p>
+          <p className="text-sm text-gray-500 mt-1">3 quick steps to get started.</p>
         </div>
 
         {/* Progress */}
-        <ProgressIndicator
-          activeStep={activeStep}
-          shopifyDone={shopifyDone}
-          shopDomain={shopDomain}
-        />
+        <ProgressIndicator activeStep={activeStep} shopDomain={shopDomain} />
 
         {/* Step card */}
         <div className="bg-white rounded-2xl border border-gray-200 shadow-sm p-8 mt-8">
@@ -374,7 +655,6 @@ export default function OnboardingPage(): React.ReactElement {
               connecting={connecting}
               onConnect={() => { void initiateShopify(); }}
               onSkip={() => {
-                setShopifyDone(false);
                 setShopDomain("");
                 setActiveStep(2);
               }}
@@ -383,17 +663,35 @@ export default function OnboardingPage(): React.ReactElement {
 
           {activeStep === 2 && (
             <StepWhatsApp
-              phone={phone}
-              setPhone={setPhone}
+              countryCode={countryCode}
+              setCountryCode={setCountryCode}
+              phoneNumber={phoneNumber}
+              setPhoneNumber={setPhoneNumber}
               phoneError={phoneError}
               linking={linking}
+              linked={whatsappLinked}
               shopifyDone={shopifyDone}
               onLink={() => { void linkWhatsApp(); }}
+              onContinue={() => { setActiveStep(3); }}
               onSkip={() => { setActiveStep(3); }}
             />
           )}
 
-          {activeStep === 3 && <StepDone />}
+          {activeStep === 3 && (
+            <StepPreferences
+              timezone={timezone}
+              setTimezone={setTimezone}
+              currency={currency}
+              setCurrency={setCurrency}
+              briefTime={briefTime}
+              setBriefTime={setBriefTime}
+              notifications={notifications}
+              setNotifications={setNotifications}
+              saving={saving}
+              saveError={saveError}
+              onSave={() => { void savePreferences(); }}
+            />
+          )}
         </div>
       </div>
     </div>

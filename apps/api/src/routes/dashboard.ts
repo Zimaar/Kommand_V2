@@ -9,6 +9,7 @@ import {
   channels,
   agentRuns,
   messages,
+  scheduledJobs,
 } from "../db/schema.js";
 import { UpdatePreferencesSchema } from "@kommand/shared";
 import { sendError, UnauthorizedError, NotFoundError } from "../utils/errors.js";
@@ -265,6 +266,93 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
         .update(accountingConnections)
         .set({ isActive: false, updatedAt: new Date() })
         .where(eq(accountingConnections.id, connectionId));
+
+      return reply.send({ success: true });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // PUT /api/dashboard/preferences — save onboarding preferences + upsert scheduled jobs
+  app.put("/preferences", async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await resolveTenant(req);
+
+      const {
+        timezone,
+        currency,
+        briefTime = "08:00",
+        notifications = {},
+      } = req.body as {
+        timezone?: string;
+        currency?: string;
+        briefTime?: string;
+        notifications?: {
+          newOrders?: boolean;
+          lowStock?: boolean;
+          dailyBrief?: boolean;
+        };
+      };
+
+      // Merge into existing preferences
+      const rows = await db
+        .select({ preferences: tenants.preferences })
+        .from(tenants)
+        .where(eq(tenants.id, tenantId))
+        .limit(1);
+
+      const existing = (rows[0]?.preferences as Record<string, unknown>) ?? {};
+      const merged: Record<string, unknown> = {
+        ...existing,
+        morning_brief_time: briefTime,
+        notifications: {
+          newOrders: notifications.newOrders !== false,
+          lowStock: notifications.lowStock !== false,
+          dailyBrief: notifications.dailyBrief !== false,
+        },
+      };
+
+      const tenantUpdates: Record<string, unknown> = {
+        preferences: merged,
+        updatedAt: new Date(),
+      };
+      if (timezone) { tenantUpdates.timezone = timezone; }
+      if (currency) { tenantUpdates.currency = currency; }
+
+      await db.update(tenants).set(tenantUpdates).where(eq(tenants.id, tenantId));
+
+      // Build cron from briefTime (HH:MM in tenant's local time — scheduler honours timezone)
+      const [briefHourStr = "8", briefMinStr = "0"] = briefTime.split(":");
+      const briefCron = `${Number(briefMinStr)} ${Number(briefHourStr)} * * *`;
+      const dailyBriefEnabled = notifications.dailyBrief !== false;
+
+      // Replace scheduled jobs for this tenant — delete then re-insert so settings stay fresh
+      await db
+        .delete(scheduledJobs)
+        .where(and(eq(scheduledJobs.tenantId, tenantId), eq(scheduledJobs.jobType, "morning_brief")));
+
+      await db
+        .delete(scheduledJobs)
+        .where(and(eq(scheduledJobs.tenantId, tenantId), eq(scheduledJobs.jobType, "proactive_analysis")));
+
+      await db.insert(scheduledJobs).values([
+        {
+          tenantId,
+          jobType: "morning_brief",
+          prompt:
+            "Generate a morning brief: yesterday's sales total, top 3 products, any pending orders, and one key insight the owner should act on today.",
+          cron: briefCron,
+          isActive: dailyBriefEnabled,
+        },
+        {
+          tenantId,
+          jobType: "proactive_analysis",
+          prompt:
+            "Scan for anomalies in the last 48 hours: unusual return rate spikes, inventory below re-order threshold, order velocity changes. Alert the owner if anything is notable.",
+          cron: "0 */4 * * *", // every 4 hours
+          isActive: true,
+        },
+      ]);
 
       return reply.send({ success: true });
     } catch (error) {
