@@ -1,3 +1,5 @@
+export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+
 export const COUNTRY_CODES = [
   { code: "+971", label: "🇦🇪 +971" },
   { code: "+1", label: "🇺🇸 +1" },

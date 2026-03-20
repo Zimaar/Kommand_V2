@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useApiClient, API_URL } from "@/hooks/use-api-client";
+import { useApiClient } from "@/hooks/use-api-client";
+import { API_URL } from "@/lib/constants";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -169,6 +170,7 @@ export default function ChatLogPage(): React.ReactElement {
 
     setSearching(true);
     searchTimeout.current = setTimeout(async () => {
+      offsetRef.current = 0;
       try {
         const res = await fetch(
           `${API_URL}/api/dashboard/messages/search?q=${encodeURIComponent(searchQuery)}`,

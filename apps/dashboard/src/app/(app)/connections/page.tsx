@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useApiClient, API_URL } from "@/hooks/use-api-client";
+import { useApiClient } from "@/hooks/use-api-client";
+import { API_URL } from "@/lib/constants";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 

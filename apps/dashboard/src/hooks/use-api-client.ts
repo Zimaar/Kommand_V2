@@ -3,8 +3,6 @@
 import { useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
 
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-
 /**
  * Returns a stable `buildHeaders` function that injects the Clerk Bearer token
  * and x-tenant-id header into every API request.
