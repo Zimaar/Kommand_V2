@@ -5,6 +5,7 @@ import helmet from "@fastify/helmet";
 import sensible from "@fastify/sensible";
 import rawBody from "fastify-raw-body";
 import { config } from "./config.js";
+import { initMonitoring, flushMonitoring } from "./utils/monitoring.js";
 import { AppError, sendError } from "./utils/errors.js";
 import { webhookRoutes } from "./routes/webhooks.js";
 import { shopifyWebhookRoutes } from "./routes/shopify-webhooks.js";
@@ -13,6 +14,8 @@ import { authRoutes } from "./routes/auth.js";
 import { billingRoutes } from "./routes/billing.js";
 import { redis } from "./lib/redis.js";
 import { scheduler } from "./proactive/scheduler.js";
+
+initMonitoring();
 
 const startedAt = Date.now();
 
@@ -88,6 +91,7 @@ await app.register(billingRoutes, { prefix: "/billing" });
 async function shutdown(signal: string): Promise<void> {
   app.log.info(`Received ${signal}, shutting down gracefully…`);
   await scheduler.shutdown();
+  await flushMonitoring();
   await app.close();
   await redis.quit();
   process.exit(0);

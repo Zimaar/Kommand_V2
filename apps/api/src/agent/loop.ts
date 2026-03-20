@@ -8,6 +8,7 @@ import { executePrimitive, getPrimitiveDefinitions } from "../primitives/index.j
 import { db } from "../db/connection.js";
 import { agentRuns, messages, generatedFiles } from "../db/schema.js";
 import type { AgentResponse, PrimitiveCallLog, AgentRunTrigger } from "@kommand/shared";
+import { logAgentRun, captureError } from "../utils/monitoring.js";
 
 const anthropic = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY || "sk-ant-placeholder" });
 
@@ -52,7 +53,7 @@ export async function runAgent(
     if (pending && isConfirmation(inboundMessage)) {
       const confirmResult = await executePendingAction(pending, inboundMessage, tenantId, runId);
       if (confirmResult.outcome && confirmResult.text) {
-        return await finalizeRun(runId, tenantId, confirmResult.text, 1, 0, 0, [], startTime);
+        return await finalizeRun(runId, tenantId, confirmResult.text, 1, 0, 0, [], startTime, trigger);
       }
       // Ambiguous — fall through to agent loop with context about the pending action
     }
@@ -93,7 +94,7 @@ export async function runAgent(
         return await finalizeRun(
           runId, tenantId, finalText, iterations,
           totalInputTokens, totalOutputTokens,
-          primitiveLogs, startTime
+          primitiveLogs, startTime, trigger
         );
       }
 
@@ -175,11 +176,24 @@ export async function runAgent(
     return await finalizeRun(
       runId, tenantId, finalText, iterations,
       totalInputTokens, totalOutputTokens,
-      primitiveLogs, startTime
+      primitiveLogs, startTime, trigger
     );
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : "Unknown error";
     const latencyMs = Date.now() - startTime;
+
+    captureError(error, { tenantId, trigger, runId, iterations });
+    logAgentRun({
+      tenantId,
+      runId,
+      trigger,
+      iterations,
+      tokensUsed: totalInputTokens + totalOutputTokens,
+      latencyMs,
+      primitiveCalls: primitiveLogs,
+      status: "failed",
+      error: errorMessage,
+    });
 
     await db
       .update(agentRuns)
@@ -244,7 +258,8 @@ async function finalizeRun(
   tokensInput: number,
   tokensOutput: number,
   primitiveLogs: PrimitiveCallLog[],
-  startTime: number
+  startTime: number,
+  trigger: AgentRunTrigger = "message"
 ): Promise<AgentResponse> {
   const latencyMs = Date.now() - startTime;
   const tokensUsed = tokensInput + tokensOutput;
@@ -276,6 +291,17 @@ async function finalizeRun(
     .select({ url: generatedFiles.downloadUrl, filename: generatedFiles.filename })
     .from(generatedFiles)
     .where(eq(generatedFiles.agentRunId, runId));
+
+  logAgentRun({
+    tenantId,
+    runId,
+    trigger,
+    iterations,
+    tokensUsed,
+    latencyMs,
+    primitiveCalls: primitiveLogs,
+    status: "completed",
+  });
 
   return {
     text,

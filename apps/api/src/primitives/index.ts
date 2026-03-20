@@ -1,6 +1,7 @@
 import type { Tool } from "@anthropic-ai/sdk/resources/messages.js";
 import type { PrimitiveResponse, PrimitiveName } from "@kommand/shared";
 import type { PrimitiveDefinition } from "./types.js";
+import { logPrimitiveCall, captureError } from "../utils/monitoring.js";
 import { shopifyDef } from "./shopify.js";
 import { xeroDef } from "./xero.js";
 import { runCodeDef } from "./run-code.js";
@@ -94,18 +95,15 @@ export async function executePrimitive(
     const result = await def.handler(input, tenantId, runId);
     const latencyMs = Date.now() - startMs;
 
-    console.log(
-      `[primitive] ${name} tenant=${tenantId} success=${result.success} latency=${latencyMs}ms`
-    );
+    logPrimitiveCall({ tenantId, runId, primitive: name, latencyMs, success: result.success });
 
     return result;
   } catch (err) {
     const latencyMs = Date.now() - startMs;
     const message = err instanceof Error ? err.message : "Unknown error";
 
-    console.error(
-      `[primitive] ${name} tenant=${tenantId} success=false latency=${latencyMs}ms error=${message}`
-    );
+    captureError(err, { tenantId, runId, primitive: name });
+    logPrimitiveCall({ tenantId, runId, primitive: name, latencyMs, success: false, error: message });
 
     return { success: false, error: `Primitive ${name} failed: ${message}` };
   }

@@ -1,4 +1,5 @@
 import type { FastifyReply } from "fastify";
+import { captureError } from "./monitoring.js";
 
 // Error codes used across the API
 export const ErrorCode = {
@@ -87,7 +88,7 @@ export function sendError(reply: FastifyReply, error: unknown): FastifyReply {
     });
   }
 
-  console.error("Unhandled error:", error);
+  captureError(error);
   return reply.status(500).send({
     success: false,
     error: { code: ErrorCode.INTERNAL_ERROR, message: "An unexpected error occurred" },

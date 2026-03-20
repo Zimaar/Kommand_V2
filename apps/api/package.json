@@ -24,7 +24,7 @@
     "@fastify/sensible": "^6.0.4",
     "@kommand/shared": "*",
     "@neondatabase/serverless": "^0.10.0",
-    "@sentry/node": "^8.0.0",
+    "@sentry/node": "^8.55.0",
     "bullmq": "^5.0.0",
     "cron-parser": "^5.5.0",
     "date-fns": "^4.1.0",

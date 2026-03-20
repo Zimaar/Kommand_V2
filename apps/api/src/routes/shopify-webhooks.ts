@@ -6,6 +6,7 @@ import { stores, channels } from "../db/schema.js";
 import { config } from "../config.js";
 import { runAgent } from "../agent/loop.js";
 import { whatsappAdapter } from "../channels/whatsapp.js";
+import { logWebhook, captureError } from "../utils/monitoring.js";
 
 // Topics Kommand actively handles — everything else is silently acked
 const HANDLED_TOPICS = new Set([
@@ -29,8 +30,11 @@ export async function shopifyWebhookRoutes(app: FastifyInstance): Promise<void> 
       const topic = (req.headers["x-shopify-topic"] as string) ?? "";
       const shopDomain = (req.headers["x-shopify-shop-domain"] as string) ?? "";
 
+      const webhookStart = Date.now();
+
       // 1. Verify HMAC-SHA256 signature (raw body, base64) — reject early
       if (!verifyWebhookHmac(rawBody, hmacHeader)) {
+        logWebhook({ channel: "shopify", event: topic, processingMs: Date.now() - webhookStart, success: false, error: "HMAC verification failed" });
         return reply.status(401).send("Unauthorized");
       }
 
@@ -39,12 +43,14 @@ export async function shopifyWebhookRoutes(app: FastifyInstance): Promise<void> 
 
       // 3. Process asynchronously, don't block the response
       if (HANDLED_TOPICS.has(topic)) {
-        handleWebhook(topic, shopDomain, req.body).catch((err: unknown) => {
-          app.log.error(
-            { err, topic, shopDomain },
-            "[shopify-webhook] Async handler error"
-          );
-        });
+        handleWebhook(topic, shopDomain, req.body)
+          .then(() => {
+            logWebhook({ channel: "shopify", event: topic, processingMs: Date.now() - webhookStart, success: true });
+          })
+          .catch((err: unknown) => {
+            captureError(err, { channel: "shopify", topic, shopDomain });
+            logWebhook({ channel: "shopify", event: topic, processingMs: Date.now() - webhookStart, success: false, error: err instanceof Error ? err.message : "Unknown" });
+          });
       }
     }
   );
