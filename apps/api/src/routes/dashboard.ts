@@ -366,9 +366,9 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
     try {
       const tenantId = await resolveTenant(req);
       const [storeRows, connRows, channelRows] = await Promise.all([
-        db.select().from(stores).where(eq(stores.tenantId, tenantId)),
-        db.select().from(accountingConnections).where(eq(accountingConnections.tenantId, tenantId)),
-        db.select().from(channels).where(eq(channels.tenantId, tenantId)),
+        db.select().from(stores).where(and(eq(stores.tenantId, tenantId), eq(stores.isActive, true))),
+        db.select().from(accountingConnections).where(and(eq(accountingConnections.tenantId, tenantId), eq(accountingConnections.isActive, true))),
+        db.select().from(channels).where(and(eq(channels.tenantId, tenantId), eq(channels.isActive, true))),
       ]);
       return reply.send({
         stores: storeRows.map((s) => ({
@@ -496,7 +496,8 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
   app.get("/usage", async (req: FastifyRequest, reply: FastifyReply) => {
     try {
       const tenantId = await resolveTenant(req);
-      const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+      const now = new Date();
+      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
 
       const [runRows, tenantRow] = await Promise.all([
         db

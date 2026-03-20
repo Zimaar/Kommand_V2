@@ -1,45 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAuth } from "@clerk/nextjs";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
-
-// ─── Data ─────────────────────────────────────────────────────────────────────
-
-const TIMEZONES = [
-  { value: "America/New_York", label: "Eastern — UTC−5" },
-  { value: "America/Chicago", label: "Central — UTC−6" },
-  { value: "America/Denver", label: "Mountain — UTC−7" },
-  { value: "America/Los_Angeles", label: "Pacific — UTC−8" },
-  { value: "America/Sao_Paulo", label: "São Paulo — UTC−3" },
-  { value: "UTC", label: "UTC" },
-  { value: "Europe/London", label: "London — UTC+0" },
-  { value: "Europe/Paris", label: "Paris — UTC+1" },
-  { value: "Europe/Moscow", label: "Moscow — UTC+3" },
-  { value: "Asia/Dubai", label: "Dubai — UTC+4" },
-  { value: "Asia/Kolkata", label: "Mumbai — UTC+5:30" },
-  { value: "Asia/Dhaka", label: "Dhaka — UTC+6" },
-  { value: "Asia/Bangkok", label: "Bangkok — UTC+7" },
-  { value: "Asia/Singapore", label: "Singapore — UTC+8" },
-  { value: "Asia/Tokyo", label: "Tokyo — UTC+9" },
-  { value: "Australia/Sydney", label: "Sydney — UTC+11" },
-];
-
-const CURRENCIES = [
-  { value: "USD", label: "USD — US Dollar" },
-  { value: "EUR", label: "EUR — Euro" },
-  { value: "GBP", label: "GBP — British Pound" },
-  { value: "AED", label: "AED — UAE Dirham" },
-  { value: "AUD", label: "AUD — Australian Dollar" },
-  { value: "CAD", label: "CAD — Canadian Dollar" },
-  { value: "SGD", label: "SGD — Singapore Dollar" },
-  { value: "INR", label: "INR — Indian Rupee" },
-  { value: "SAR", label: "SAR — Saudi Riyal" },
-  { value: "BRL", label: "BRL — Brazilian Real" },
-  { value: "ZAR", label: "ZAR — South African Rand" },
-  { value: "JPY", label: "JPY — Japanese Yen" },
-];
+import { useApiClient, API_URL } from "@/hooks/use-api-client";
+import { TIMEZONES, CURRENCIES } from "@/lib/constants";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -140,8 +103,14 @@ function Section({
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const NOTIF_ITEMS: { key: keyof NotifPrefs; label: string; desc: string }[] = [
+  { key: "dailyBrief", label: "Daily brief", desc: "Morning summary on WhatsApp" },
+  { key: "newOrders", label: "New orders", desc: "Alert when orders come in" },
+  { key: "lowStock", label: "Low stock alerts", desc: "When inventory drops below threshold" },
+];
+
 export default function PreferencesPage(): React.ReactElement {
-  const { userId, getToken } = useAuth();
+  const { buildHeaders } = useApiClient();
 
   // Form state
   const [timezone, setTimezone] = useState("UTC");
@@ -164,18 +133,9 @@ export default function PreferencesPage(): React.ReactElement {
   // Usage state
   const [usage, setUsage] = useState<UsageData | null>(null);
 
-  async function authHeaders(): Promise<Record<string, string>> {
-    const token = await getToken();
-    return {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(userId ? { "x-tenant-id": userId } : {}),
-    };
-  }
-
   const loadAll = useCallback(async () => {
     try {
-      const headers = await authHeaders();
+      const headers = await buildHeaders();
 
       const [meRes, memoriesRes, usageRes] = await Promise.all([
         fetch(`${API_URL}/api/dashboard/me`, { headers }),
@@ -215,8 +175,7 @@ export default function PreferencesPage(): React.ReactElement {
     } catch {
       setMemoriesLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [buildHeaders]);
 
   useEffect(() => { void loadAll(); }, [loadAll]);
 
@@ -227,7 +186,7 @@ export default function PreferencesPage(): React.ReactElement {
     try {
       const res = await fetch(`${API_URL}/api/dashboard/preferences`, {
         method: "PUT",
-        headers: await authHeaders(),
+        headers: await buildHeaders(),
         body: JSON.stringify({ timezone, currency, briefTime, notifications }),
       });
       if (!res.ok) {
@@ -247,19 +206,15 @@ export default function PreferencesPage(): React.ReactElement {
   async function deleteMemory(id: string): Promise<void> {
     setDeletingMemory(id);
     try {
-      const headers = await authHeaders();
-      await fetch(`${API_URL}/api/dashboard/memories/${id}`, { method: "DELETE", headers });
+      await fetch(`${API_URL}/api/dashboard/memories/${id}`, {
+        method: "DELETE",
+        headers: await buildHeaders(),
+      });
       setMemories((prev) => prev.filter((m) => m.id !== id));
     } finally {
       setDeletingMemory(null);
     }
   }
-
-  const NOTIF_ITEMS: { key: keyof NotifPrefs; label: string; desc: string }[] = [
-    { key: "dailyBrief", label: "Daily brief", desc: "Morning summary on WhatsApp" },
-    { key: "newOrders", label: "New orders", desc: "Alert when orders come in" },
-    { key: "lowStock", label: "Low stock alerts", desc: "When inventory drops below threshold" },
-  ];
 
   return (
     <div className="space-y-6 max-w-xl">

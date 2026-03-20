@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { useAuth } from "@clerk/nextjs";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+import { useApiClient, API_URL } from "@/hooks/use-api-client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -172,27 +170,19 @@ function AvailableCard({
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ConnectionsPage(): React.ReactElement {
-  const { userId, getToken } = useAuth();
+  const { buildHeaders } = useApiClient();
   const [data, setData] = useState<ConnectionsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
-  async function authHeaders(): Promise<Record<string, string>> {
-    const token = await getToken();
-    return {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(userId ? { "x-tenant-id": userId } : {}),
-    };
-  }
-
   const load = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const headers = await authHeaders();
-      const res = await fetch(`${API_URL}/api/dashboard/connections`, { headers });
+      const res = await fetch(`${API_URL}/api/dashboard/connections`, {
+        headers: await buildHeaders(),
+      });
       if (!res.ok) { throw new Error("Failed to load connections"); }
       setData((await res.json()) as ConnectionsData);
     } catch {
@@ -200,16 +190,17 @@ export default function ConnectionsPage(): React.ReactElement {
     } finally {
       setLoading(false);
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [buildHeaders]);
 
   useEffect(() => { void load(); }, [load]);
 
   async function disconnectStore(id: string): Promise<void> {
     setDisconnecting(id);
     try {
-      const headers = await authHeaders();
-      await fetch(`${API_URL}/api/dashboard/stores/${id}`, { method: "DELETE", headers });
+      await fetch(`${API_URL}/api/dashboard/stores/${id}`, {
+        method: "DELETE",
+        headers: await buildHeaders(),
+      });
       await load();
     } finally {
       setDisconnecting(null);
@@ -219,8 +210,10 @@ export default function ConnectionsPage(): React.ReactElement {
   async function disconnectAccounting(id: string): Promise<void> {
     setDisconnecting(id);
     try {
-      const headers = await authHeaders();
-      await fetch(`${API_URL}/api/dashboard/connections/${id}`, { method: "DELETE", headers });
+      await fetch(`${API_URL}/api/dashboard/connections/${id}`, {
+        method: "DELETE",
+        headers: await buildHeaders(),
+      });
       await load();
     } finally {
       setDisconnecting(null);
@@ -230,21 +223,24 @@ export default function ConnectionsPage(): React.ReactElement {
   async function disconnectWhatsApp(): Promise<void> {
     setDisconnecting("whatsapp");
     try {
-      const headers = await authHeaders();
-      await fetch(`${API_URL}/api/dashboard/whatsapp`, { method: "DELETE", headers });
+      await fetch(`${API_URL}/api/dashboard/whatsapp`, {
+        method: "DELETE",
+        headers: await buildHeaders(),
+      });
       await load();
     } finally {
       setDisconnecting(null);
     }
   }
 
-  const activeStores = data?.stores.filter((s) => s.isActive) ?? [];
-  const activeConnections = data?.connections.filter((c) => c.isActive) ?? [];
-  const activeChannels = data?.channels.filter((c) => c.isActive) ?? [];
+  // Backend now returns only active connections, so no client-side filtering needed.
+  const stores = data?.stores ?? [];
+  const connections = data?.connections ?? [];
+  const channels = data?.channels ?? [];
 
-  const hasShopify = activeStores.some((s) => s.platform === "shopify");
-  const hasWhatsApp = activeChannels.some((c) => c.type === "whatsapp");
-  const hasAccounting = activeConnections.length > 0;
+  const hasShopify = stores.some((s) => s.platform === "shopify");
+  const hasWhatsApp = channels.some((c) => c.type === "whatsapp");
+  const hasAccounting = connections.length > 0;
 
   return (
     <div className="space-y-8 max-w-2xl">
@@ -254,7 +250,7 @@ export default function ConnectionsPage(): React.ReactElement {
         <p className="text-sm text-gray-500 mt-1">Manage your store and channel integrations.</p>
       </div>
 
-      {/* Loading / Error */}
+      {/* Loading */}
       {loading && (
         <div className="space-y-3">
           {[1, 2].map((n) => (
@@ -263,6 +259,7 @@ export default function ConnectionsPage(): React.ReactElement {
         </div>
       )}
 
+      {/* Error */}
       {!loading && error && (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-4">
           {error}
@@ -275,7 +272,7 @@ export default function ConnectionsPage(): React.ReactElement {
       {/* Connected integrations */}
       {!loading && !error && data && (
         <>
-          {activeStores.length === 0 && activeChannels.length === 0 && activeConnections.length === 0 ? (
+          {stores.length === 0 && channels.length === 0 && connections.length === 0 ? (
             <div className="text-center py-12 text-gray-400 text-sm">
               No connections yet.{" "}
               <a href="/onboarding" className="text-[#534AB7] hover:underline">
@@ -286,7 +283,7 @@ export default function ConnectionsPage(): React.ReactElement {
             <div className="space-y-3">
               <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Connected</p>
 
-              {activeStores.map((s) => (
+              {stores.map((s) => (
                 <ConnectionCard
                   key={s.id}
                   icon={platformIcon(s.platform)}
@@ -299,7 +296,7 @@ export default function ConnectionsPage(): React.ReactElement {
                 />
               ))}
 
-              {activeChannels.map((c) => (
+              {channels.map((c) => (
                 <ConnectionCard
                   key={c.id}
                   icon={platformIcon(c.type)}
@@ -312,7 +309,7 @@ export default function ConnectionsPage(): React.ReactElement {
                 />
               ))}
 
-              {activeConnections.map((c) => (
+              {connections.map((c) => (
                 <ConnectionCard
                   key={c.id}
                   icon={platformIcon(c.platform)}

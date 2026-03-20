@@ -1,9 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useAuth } from "@clerk/nextjs";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+import { useApiClient, API_URL } from "@/hooks/use-api-client";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -98,7 +96,7 @@ function MessageBubble({ msg }: { msg: Message }): React.ReactElement {
 
   return (
     <div className={`flex ${isOwner ? "justify-end" : "justify-start"}`}>
-      <div className={`max-w-[75%] ${isOwner ? "" : ""}`}>
+      <div className="max-w-[75%]">
         <div
           className={`rounded-2xl px-4 py-2.5 text-sm leading-relaxed whitespace-pre-wrap ${
             isOwner
@@ -121,33 +119,26 @@ function MessageBubble({ msg }: { msg: Message }): React.ReactElement {
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
+const PAGE = 50;
+
 export default function ChatLogPage(): React.ReactElement {
-  const { userId, getToken } = useAuth();
+  const { buildHeaders } = useApiClient();
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(false);
-  const [offset, setOffset] = useState(0);
   const [searchQuery, setSearchQuery] = useState("");
   const [searching, setSearching] = useState(false);
   const [error, setError] = useState("");
+  // Tracks pagination offset without triggering re-renders
+  const offsetRef = useRef(0);
   const searchTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const PAGE = 50;
 
-  async function authHeaders(): Promise<Record<string, string>> {
-    const token = await getToken();
-    return {
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(userId ? { "x-tenant-id": userId } : {}),
-    };
-  }
-
-  const loadMessages = useCallback(async (currentOffset: number, prepend: boolean) => {
+  const loadMessages = useCallback(async (offset: number, prepend: boolean) => {
     try {
-      const headers = await authHeaders();
       const res = await fetch(
-        `${API_URL}/api/dashboard/messages?limit=${PAGE}&offset=${currentOffset}`,
-        { headers }
+        `${API_URL}/api/dashboard/messages?limit=${PAGE}&offset=${offset}`,
+        { headers: await buildHeaders() }
       );
       if (!res.ok) { throw new Error("Failed to load messages"); }
       const rows = (await res.json()) as Message[];
@@ -156,10 +147,11 @@ export default function ChatLogPage(): React.ReactElement {
     } catch {
       setError("Could not load messages.");
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId]);
+  }, [buildHeaders]);
 
+  // Initial load
   useEffect(() => {
+    offsetRef.current = 0;
     setLoading(true);
     loadMessages(0, false).finally(() => setLoading(false));
   }, [loadMessages]);
@@ -167,18 +159,20 @@ export default function ChatLogPage(): React.ReactElement {
   // Debounced search
   useEffect(() => {
     if (searchTimeout.current) { clearTimeout(searchTimeout.current); }
+
     if (!searchQuery.trim()) {
       setSearching(false);
+      offsetRef.current = 0;
       void loadMessages(0, false);
       return;
     }
+
     setSearching(true);
     searchTimeout.current = setTimeout(async () => {
       try {
-        const headers = await authHeaders();
         const res = await fetch(
           `${API_URL}/api/dashboard/messages/search?q=${encodeURIComponent(searchQuery)}`,
-          { headers }
+          { headers: await buildHeaders() }
         );
         if (!res.ok) { throw new Error(); }
         setMessages((await res.json()) as Message[]);
@@ -189,17 +183,16 @@ export default function ChatLogPage(): React.ReactElement {
         setSearching(false);
       }
     }, 350);
+
     return () => {
       if (searchTimeout.current) { clearTimeout(searchTimeout.current); }
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchQuery]);
+  }, [searchQuery, buildHeaders, loadMessages]);
 
   async function loadMore(): Promise<void> {
-    const nextOffset = offset + PAGE;
+    offsetRef.current += PAGE;
     setLoadingMore(true);
-    setOffset(nextOffset);
-    await loadMessages(nextOffset, true);
+    await loadMessages(offsetRef.current, true);
     setLoadingMore(false);
   }
 
@@ -251,7 +244,6 @@ export default function ChatLogPage(): React.ReactElement {
           </div>
         ) : (
           <div className="flex flex-col">
-            {/* Load more */}
             {hasMore && !searchQuery && (
               <div className="flex justify-center py-3 border-b border-gray-200">
                 <button
@@ -264,7 +256,6 @@ export default function ChatLogPage(): React.ReactElement {
                 </button>
               </div>
             )}
-
             <div className="p-4 space-y-3 overflow-y-auto max-h-[calc(100vh-16rem)]">
               {messages.map((msg) => (
                 <MessageBubble key={msg.id} msg={msg} />
