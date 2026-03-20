@@ -249,7 +249,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       await db
         .update(stores)
         .set({ isActive: false, updatedAt: new Date() })
-        .where(eq(stores.id, storeId));
+        .where(and(eq(stores.id, storeId), eq(stores.tenantId, tenantId)));
 
       return reply.send({ success: true });
     } catch (error) {
@@ -266,7 +266,7 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       await db
         .update(accountingConnections)
         .set({ isActive: false, updatedAt: new Date() })
-        .where(eq(accountingConnections.id, connectionId));
+        .where(and(eq(accountingConnections.id, connectionId), eq(accountingConnections.tenantId, tenantId)));
 
       return reply.send({ success: true });
     } catch (error) {

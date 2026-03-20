@@ -2,10 +2,8 @@
 
 import { useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useAuth } from "@clerk/nextjs";
-import { COUNTRY_CODES, TIMEZONES, CURRENCIES } from "@/lib/constants";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+import { useApiClient } from "@/hooks/use-api-client";
+import { API_URL, COUNTRY_CODES, TIMEZONES, CURRENCIES } from "@/lib/constants";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -441,7 +439,7 @@ function detectTimezone(): string {
 function OnboardingPageInner(): React.ReactElement {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { userId, getToken } = useAuth();
+  const { buildHeaders } = useApiClient();
 
   const connectedParam = searchParams.get("connected");
   const shopParam = searchParams.get("shop") ?? "";
@@ -480,15 +478,6 @@ function OnboardingPageInner(): React.ReactElement {
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState("");
 
-  async function authHeaders(): Promise<Record<string, string>> {
-    const token = await getToken();
-    return {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(userId ? { "x-tenant-id": userId } : {}),
-    };
-  }
-
   async function initiateShopify(): Promise<void> {
     let shop = shopInput.trim().toLowerCase();
     if (!shop.includes(".")) { shop = `${shop}.myshopify.com`; }
@@ -504,7 +493,7 @@ function OnboardingPageInner(): React.ReactElement {
     try {
       const res = await fetch(`${API_URL}/api/dashboard/connections/shopify/initiate`, {
         method: "POST",
-        headers: await authHeaders(),
+        headers: await buildHeaders(),
         body: JSON.stringify({ shop }),
       });
 
@@ -537,7 +526,7 @@ function OnboardingPageInner(): React.ReactElement {
     try {
       const res = await fetch(`${API_URL}/api/dashboard/whatsapp/link`, {
         method: "POST",
-        headers: await authHeaders(),
+        headers: await buildHeaders(),
         body: JSON.stringify({ phone: full }),
       });
 
@@ -562,7 +551,7 @@ function OnboardingPageInner(): React.ReactElement {
     try {
       const res = await fetch(`${API_URL}/api/dashboard/preferences`, {
         method: "PUT",
-        headers: await authHeaders(),
+        headers: await buildHeaders(),
         body: JSON.stringify({ timezone, currency, briefTime, notifications }),
       });
 

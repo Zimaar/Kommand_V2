@@ -206,10 +206,11 @@ export default function PreferencesPage(): React.ReactElement {
   async function deleteMemory(id: string): Promise<void> {
     setDeletingMemory(id);
     try {
-      await fetch(`${API_URL}/api/dashboard/memories/${id}`, {
+      const res = await fetch(`${API_URL}/api/dashboard/memories/${id}`, {
         method: "DELETE",
         headers: await buildHeaders(),
       });
+      if (!res.ok) { setSaveError("Failed to delete memory. Please try again."); return; }
       setMemories((prev) => prev.filter((m) => m.id !== id));
     } finally {
       setDeletingMemory(null);

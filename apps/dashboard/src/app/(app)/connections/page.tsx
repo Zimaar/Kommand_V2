@@ -198,10 +198,11 @@ export default function ConnectionsPage(): React.ReactElement {
   async function disconnectStore(id: string): Promise<void> {
     setDisconnecting(id);
     try {
-      await fetch(`${API_URL}/api/dashboard/stores/${id}`, {
+      const res = await fetch(`${API_URL}/api/dashboard/stores/${id}`, {
         method: "DELETE",
         headers: await buildHeaders(),
       });
+      if (!res.ok) { setError("Failed to disconnect store. Please try again."); return; }
       await load();
     } finally {
       setDisconnecting(null);
@@ -211,10 +212,11 @@ export default function ConnectionsPage(): React.ReactElement {
   async function disconnectAccounting(id: string): Promise<void> {
     setDisconnecting(id);
     try {
-      await fetch(`${API_URL}/api/dashboard/connections/${id}`, {
+      const res = await fetch(`${API_URL}/api/dashboard/connections/${id}`, {
         method: "DELETE",
         headers: await buildHeaders(),
       });
+      if (!res.ok) { setError("Failed to disconnect accounting. Please try again."); return; }
       await load();
     } finally {
       setDisconnecting(null);
@@ -224,10 +226,11 @@ export default function ConnectionsPage(): React.ReactElement {
   async function disconnectWhatsApp(): Promise<void> {
     setDisconnecting("whatsapp");
     try {
-      await fetch(`${API_URL}/api/dashboard/whatsapp`, {
+      const res = await fetch(`${API_URL}/api/dashboard/whatsapp`, {
         method: "DELETE",
         headers: await buildHeaders(),
       });
+      if (!res.ok) { setError("Failed to disconnect WhatsApp. Please try again."); return; }
       await load();
     } finally {
       setDisconnecting(null);
