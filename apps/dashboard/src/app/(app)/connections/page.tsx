@@ -128,6 +128,52 @@ function ConnectionCard({
   );
 }
 
+// ─── Connect Xero Button ──────────────────────────────────────────────────────
+
+function ConnectXeroButton({
+  buildHeaders,
+}: {
+  buildHeaders: () => Promise<Record<string, string>>;
+}): React.ReactElement {
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  async function handleConnect(): Promise<void> {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch(`${API_URL}/api/dashboard/connections/xero/initiate`, {
+        method: "POST",
+        headers: await buildHeaders(),
+      });
+      if (!res.ok) {
+        setError("Could not start Xero connection. Try again.");
+        return;
+      }
+      const { url } = (await res.json()) as { url: string };
+      window.location.href = url;
+    } catch {
+      setError("Could not start Xero connection. Try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => { void handleConnect(); }}
+        disabled={loading}
+        className="text-xs text-[#534AB7] font-medium hover:underline disabled:opacity-40 shrink-0 mt-0.5 transition-opacity"
+      >
+        {loading ? "…" : "Connect →"}
+      </button>
+      {error && <p className="text-xs text-red-500 mt-1">{error}</p>}
+    </div>
+  );
+}
+
 // ─── Available Platform Card ──────────────────────────────────────────────────
 
 function AvailableCard({
@@ -175,6 +221,18 @@ export default function ConnectionsPage(): React.ReactElement {
   const [data, setData] = useState<ConnectionsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [banner, setBanner] = useState("");
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("connected") === "xero") { setBanner("Xero connected successfully."); }
+    if (params.get("error") === "xero_oauth_failed") { setBanner("Xero connection failed. Please try again."); }
+    if (params.get("error") === "xero_denied") { setBanner("Xero connection cancelled."); }
+    // Strip query params without full reload
+    if (params.toString()) {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+  }, []);
   const [disconnecting, setDisconnecting] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -253,6 +311,14 @@ export default function ConnectionsPage(): React.ReactElement {
         <h1 className="text-2xl font-bold text-gray-900">Connections</h1>
         <p className="text-sm text-gray-500 mt-1">Manage your store and channel integrations.</p>
       </div>
+
+      {/* Banner */}
+      {banner && (
+        <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-xl p-4 flex items-center justify-between">
+          {banner}
+          <button type="button" onClick={() => setBanner("")} className="text-green-500 hover:text-green-700 ml-3">✕</button>
+        </div>
+      )}
 
       {/* Loading */}
       {loading && (
@@ -353,12 +419,16 @@ export default function ConnectionsPage(): React.ReactElement {
 
               {!hasAccounting && (
                 <>
-                  <AvailableCard
-                    icon="📊"
-                    name="Xero"
-                    description="Invoices, bills, and financial reports."
-                    comingSoon
-                  />
+                  <div className="bg-white rounded-2xl border border-dashed border-gray-200 p-5 flex items-start gap-4">
+                    <div className="w-11 h-11 rounded-xl bg-gray-50 border border-gray-100 flex items-center justify-center text-xl shrink-0 opacity-60">
+                      📊
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-gray-700 text-sm mb-0.5">Xero</p>
+                      <p className="text-xs text-gray-400">Invoices, bills, and financial reports.</p>
+                    </div>
+                    <ConnectXeroButton buildHeaders={buildHeaders} />
+                  </div>
                   <AvailableCard
                     icon="📘"
                     name="QuickBooks"

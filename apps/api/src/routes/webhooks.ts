@@ -2,15 +2,6 @@ import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
 import { config } from "../config.js";
 import { verifyWhatsAppSignature, whatsappAdapter } from "../channels/whatsapp.js";
 import { processInboundMessage, registerAdapter } from "../channels/pipeline.js";
-import {
-  buildXeroAuthUrl,
-  exchangeXeroCode,
-  getXeroTenants,
-  saveXeroConnection,
-} from "../auth/xero-oauth.js";
-
-// In-memory oauth state store for Xero (TODO M7: move to Redis)
-const oauthStates = new Map<string, { tenantId: string; expiresAt: number }>();
 
 // Register channel adapters
 registerAdapter("whatsapp", whatsappAdapter);
@@ -51,52 +42,4 @@ export async function webhookRoutes(app: FastifyInstance): Promise<void> {
     }
   );
 
-  // ─── Xero OAuth ─────────────────────────────────────────────────────────────
-
-  app.get("/xero/connect", async (req: FastifyRequest, reply: FastifyReply) => {
-    const { tenant_id: tenantId } = req.query as Record<string, string>;
-    if (!tenantId) {return reply.status(400).send("Missing tenant_id");}
-
-    const state = crypto.randomUUID();
-    oauthStates.set(state, { tenantId, expiresAt: Date.now() + 5 * 60 * 1000 });
-
-    return reply.redirect(buildXeroAuthUrl(state));
-  });
-
-  app.get("/xero/callback", async (req: FastifyRequest, reply: FastifyReply) => {
-    const { code, state } = req.query as Record<string, string>;
-
-    if (!code || !state) {return reply.status(400).send("Missing code or state");}
-
-    const stateData = oauthStates.get(state);
-    if (!stateData || stateData.expiresAt < Date.now()) {
-      oauthStates.delete(state);
-      return reply.status(400).send("Invalid or expired state");
-    }
-    oauthStates.delete(state);
-
-    const { tenantId } = stateData;
-
-    try {
-      const { accessToken, refreshToken, expiresIn } = await exchangeXeroCode(code);
-      const xeroTenants = await getXeroTenants(accessToken);
-      const firstOrg = xeroTenants[0];
-
-      if (!firstOrg) {throw new Error("No Xero orgs found");}
-
-      await saveXeroConnection(
-        tenantId,
-        accessToken,
-        refreshToken,
-        expiresIn,
-        firstOrg.tenantId,
-        firstOrg.tenantName
-      );
-
-      return reply.redirect(`${config.DASHBOARD_URL}/settings?connected=xero`);
-    } catch (error) {
-      console.error("Xero OAuth error:", error);
-      return reply.redirect(`${config.DASHBOARD_URL}/settings?error=xero_oauth_failed`);
-    }
-  });
 }

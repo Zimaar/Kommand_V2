@@ -9,6 +9,13 @@ import {
   saveShopifyStore,
   registerShopifyWebhooks,
 } from "../auth/shopify-oauth.js";
+import {
+  generatePKCE,
+  buildXeroAuthUrl,
+  exchangeXeroCode,
+  getXeroTenants,
+  saveXeroConnection,
+} from "../auth/xero-oauth.js";
 
 // Nonce TTL: 5 minutes
 const NONCE_TTL_SECONDS = 300;
@@ -80,6 +87,77 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
     } catch (error) {
       app.log.error(error, "Shopify OAuth callback error");
       return reply.redirect(`${config.DASHBOARD_URL}/onboarding?error=shopify_oauth_failed`);
+    }
+  });
+
+  // ─── Xero OAuth ─────────────────────────────────────────────────────────────
+
+  // GET /auth/xero?tenant_id={id}
+  // Generates PKCE verifier, stores { tenantId, verifier } in Redis, redirects to Xero
+  app.get("/xero", async (req: FastifyRequest, reply: FastifyReply) => {
+    const { tenant_id: tenantId } = req.query as Record<string, string>;
+
+    if (!tenantId) {
+      return reply.status(400).send({ error: "Missing tenant_id" });
+    }
+
+    const state = crypto.randomUUID();
+    const { verifier, challenge } = generatePKCE();
+
+    await redis.set(
+      `oauth:xero:${state}`,
+      JSON.stringify({ tenantId, verifier }),
+      "EX",
+      NONCE_TTL_SECONDS
+    );
+
+    return reply.redirect(buildXeroAuthUrl(state, challenge));
+  });
+
+  // GET /auth/xero/callback?code=&state=
+  // Validates state, exchanges code with PKCE verifier, stores encrypted tokens in DB
+  app.get("/xero/callback", async (req: FastifyRequest, reply: FastifyReply) => {
+    const { code, state, error: oauthError } = req.query as Record<string, string>;
+
+    if (oauthError) {
+      app.log.warn({ oauthError }, "Xero OAuth denied by user");
+      return reply.redirect(`${config.DASHBOARD_URL}/connections?error=xero_denied`);
+    }
+
+    if (!code || !state) {
+      return reply.status(400).send({ error: "Missing code or state" });
+    }
+
+    const raw = await redis.get(`oauth:xero:${state}`);
+    if (!raw) {
+      return reply.status(400).send({ error: "Invalid or expired state" });
+    }
+    await redis.del(`oauth:xero:${state}`);
+
+    const { tenantId, verifier } = JSON.parse(raw) as { tenantId: string; verifier: string };
+
+    try {
+      const { accessToken, refreshToken, expiresIn } = await exchangeXeroCode(code, verifier);
+      const xeroTenants = await getXeroTenants(accessToken);
+      const firstOrg = xeroTenants[0];
+
+      if (!firstOrg) {
+        throw new Error("No Xero organisations found on this account");
+      }
+
+      await saveXeroConnection(
+        tenantId,
+        accessToken,
+        refreshToken,
+        expiresIn,
+        firstOrg.tenantId,
+        firstOrg.tenantName
+      );
+
+      return reply.redirect(`${config.DASHBOARD_URL}/connections?connected=xero`);
+    } catch (error) {
+      app.log.error(error, "Xero OAuth callback error");
+      return reply.redirect(`${config.DASHBOARD_URL}/connections?error=xero_oauth_failed`);
     }
   });
 }

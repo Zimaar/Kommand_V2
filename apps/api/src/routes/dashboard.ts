@@ -16,6 +16,7 @@ import { UpdatePreferencesSchema } from "@kommand/shared";
 import { sendError, UnauthorizedError, NotFoundError } from "../utils/errors.js";
 import { sendTextToPhone } from "../channels/whatsapp.js";
 import { buildShopifyInstallUrl } from "../auth/shopify-oauth.js";
+import { generatePKCE, buildXeroAuthUrl } from "../auth/xero-oauth.js";
 import { redis } from "../lib/redis.js";
 
 // Middleware: resolve tenant from Clerk JWT
@@ -520,6 +521,29 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       const limits = LIMITS[plan] ?? { runs: 50, tokens: 100_000 };
 
       return reply.send({ plan, runsThisMonth, tokensThisMonth, runsLimit: limits.runs, tokensLimit: limits.tokens });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // POST /api/dashboard/connections/xero/initiate — start Xero OAuth
+  // Returns { url } so the client can redirect; does NOT redirect server-side.
+  app.post("/connections/xero/initiate", async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await resolveTenant(req);
+
+      const state = crypto.randomUUID();
+      const { verifier, challenge } = generatePKCE();
+
+      await redis.set(
+        `oauth:xero:${state}`,
+        JSON.stringify({ tenantId, verifier }),
+        "EX",
+        300
+      );
+
+      const url = buildXeroAuthUrl(state, challenge);
+      return reply.send({ url });
     } catch (error) {
       return sendError(reply, error);
     }

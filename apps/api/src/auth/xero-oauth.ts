@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import { db } from "../db/connection.js";
 import { accountingConnections } from "../db/schema.js";
 import { encryptToken } from "./encryption.js";
@@ -7,45 +8,68 @@ const XERO_AUTH_URL = "https://login.xero.com/identity/connect/authorize";
 const XERO_TOKEN_URL = "https://identity.xero.com/connect/token";
 const XERO_CONNECTIONS_URL = "https://api.xero.com/connections";
 
-export function buildXeroAuthUrl(state: string): string {
-  const redirectUri = `${config.API_URL}/webhooks/xero/callback`;
+const XERO_SCOPES =
+  "offline_access openid profile email accounting.transactions accounting.reports.read accounting.contacts accounting.settings";
+
+// ─── PKCE ─────────────────────────────────────────────────────────────────────
+
+export function generatePKCE(): { verifier: string; challenge: string } {
+  const verifier = crypto.randomBytes(40).toString("base64url");
+  const challenge = crypto
+    .createHash("sha256")
+    .update(verifier)
+    .digest("base64url");
+  return { verifier, challenge };
+}
+
+// ─── OAuth URL ────────────────────────────────────────────────────────────────
+
+export function buildXeroAuthUrl(state: string, codeChallenge: string): string {
+  const redirectUri = `${config.API_URL}/auth/xero/callback`;
 
   const params = new URLSearchParams({
     response_type: "code",
     client_id: config.XERO_CLIENT_ID,
     redirect_uri: redirectUri,
-    scope: "offline_access openid profile email accounting.transactions accounting.reports.read accounting.contacts accounting.settings",
+    scope: XERO_SCOPES,
     state,
+    code_challenge: codeChallenge,
+    code_challenge_method: "S256",
   });
 
   return `${XERO_AUTH_URL}?${params.toString()}`;
 }
 
-export async function exchangeXeroCode(code: string): Promise<{
-  accessToken: string;
-  refreshToken: string;
-  expiresIn: number;
-}> {
-  const redirectUri = `${config.API_URL}/webhooks/xero/callback`;
+// ─── Token exchange ───────────────────────────────────────────────────────────
+
+export async function exchangeXeroCode(
+  code: string,
+  codeVerifier: string
+): Promise<{ accessToken: string; refreshToken: string; expiresIn: number }> {
+  const redirectUri = `${config.API_URL}/auth/xero/callback`;
 
   const res = await fetch(XERO_TOKEN_URL, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Basic ${Buffer.from(`${config.XERO_CLIENT_ID}:${config.XERO_CLIENT_SECRET}`).toString("base64")}`,
+      Authorization: `Basic ${Buffer.from(
+        `${config.XERO_CLIENT_ID}:${config.XERO_CLIENT_SECRET}`
+      ).toString("base64")}`,
     },
     body: new URLSearchParams({
       grant_type: "authorization_code",
       code,
       redirect_uri: redirectUri,
+      code_verifier: codeVerifier,
     }),
   });
 
   if (!res.ok) {
-    throw new Error(`Xero token exchange failed: ${res.status}`);
+    const text = await res.text();
+    throw new Error(`Xero token exchange failed (${res.status}): ${text}`);
   }
 
-  const data = await res.json() as {
+  const data = (await res.json()) as {
     access_token: string;
     refresh_token: string;
     expires_in: number;
@@ -58,18 +82,23 @@ export async function exchangeXeroCode(code: string): Promise<{
   };
 }
 
-export async function getXeroTenants(accessToken: string): Promise<
-  Array<{ tenantId: string; tenantName: string }>
-> {
+// ─── Tenant connections ───────────────────────────────────────────────────────
+
+export async function getXeroTenants(
+  accessToken: string
+): Promise<Array<{ tenantId: string; tenantName: string }>> {
   const res = await fetch(XERO_CONNECTIONS_URL, {
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
-  if (!res.ok) {throw new Error(`Failed to fetch Xero tenants: ${res.status}`);}
+  if (!res.ok) {
+    throw new Error(`Failed to fetch Xero tenants: ${res.status}`);
+  }
 
-  const data = await res.json() as Array<{ tenantId: string; tenantName: string }>;
-  return data;
+  return res.json() as Promise<Array<{ tenantId: string; tenantName: string }>>;
 }
+
+// ─── Persist connection ───────────────────────────────────────────────────────
 
 export async function saveXeroConnection(
   tenantId: string,
@@ -79,9 +108,11 @@ export async function saveXeroConnection(
   xeroOrgId: string,
   xeroOrgName: string
 ): Promise<void> {
-  const { enc: accessEnc, iv, tag } = encryptToken(accessToken);
-  const { enc: refreshEnc } = encryptToken(refreshToken);
-  const expiresAt = new Date(Date.now() + expiresIn * 1000);
+  // Each token gets its own IV — reusing IV with AES-GCM is a security violation.
+  const { enc: accessTokenEnc, iv: tokenIv, tag: tokenTag } = encryptToken(accessToken);
+  const { enc: refreshTokenEnc, iv: refreshTokenIv, tag: refreshTokenTag } = encryptToken(refreshToken);
+
+  const tokenExpiresAt = new Date(Date.now() + expiresIn * 1000);
 
   await db
     .insert(accountingConnections)
@@ -90,11 +121,13 @@ export async function saveXeroConnection(
       platform: "xero",
       orgId: xeroOrgId,
       orgName: xeroOrgName,
-      accessTokenEnc: accessEnc,
-      refreshTokenEnc: refreshEnc,
-      tokenIv: iv,
-      tokenTag: tag,
-      tokenExpiresAt: expiresAt,
+      accessTokenEnc,
+      tokenIv,
+      tokenTag,
+      refreshTokenEnc,
+      refreshTokenIv,
+      refreshTokenTag,
+      tokenExpiresAt,
       isActive: true,
     })
     .onConflictDoUpdate({
@@ -104,11 +137,13 @@ export async function saveXeroConnection(
         accountingConnections.orgId,
       ],
       set: {
-        accessTokenEnc: accessEnc,
-        refreshTokenEnc: refreshEnc,
-        tokenIv: iv,
-        tokenTag: tag,
-        tokenExpiresAt: expiresAt,
+        accessTokenEnc,
+        tokenIv,
+        tokenTag,
+        refreshTokenEnc,
+        refreshTokenIv,
+        refreshTokenTag,
+        tokenExpiresAt,
         isActive: true,
         updatedAt: new Date(),
       },
