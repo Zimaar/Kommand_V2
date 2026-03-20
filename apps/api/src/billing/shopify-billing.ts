@@ -4,6 +4,7 @@ import { stores, tenants, subscriptions } from "../db/schema.js";
 import { decryptToken } from "../auth/encryption.js";
 import { SHOPIFY_API_VERSION } from "../auth/shopify-oauth.js";
 import { config, PLAN_PRICES, TRIAL_DAYS } from "../config.js";
+import { logBilling } from "../utils/monitoring.js";
 
 // ─── Create recurring charge ─────────────────────────────────────────────────
 
@@ -79,6 +80,8 @@ export async function createShopifyCharge(
     status: "pending",
     trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 24 * 60 * 60 * 1000),
   });
+
+  logBilling({ tenantId, provider: "shopify", action: "charge.created", plan, success: true });
 
   return { confirmationUrl: charge.confirmation_url, chargeId: charge.id };
 }
@@ -164,6 +167,7 @@ export async function verifyShopifyCharge(
       })
       .where(eq(tenants.id, tenantId));
 
+    logBilling({ tenantId, provider: "shopify", action: "charge.activated", plan: sub.plan, success: true });
     return { accepted: true, plan: sub.plan };
   }
 
@@ -173,6 +177,7 @@ export async function verifyShopifyCharge(
     .set({ status: "cancelled", cancelledAt: new Date(), updatedAt: new Date() })
     .where(eq(subscriptions.id, sub.id));
 
+  logBilling({ tenantId, provider: "shopify", action: "charge.declined", plan: sub.plan, success: false });
   return { accepted: false, plan: sub.plan };
 }
 
@@ -194,4 +199,6 @@ export async function cancelShopifySubscription(tenantId: string): Promise<void>
     .update(tenants)
     .set({ plan: "expired", updatedAt: new Date() })
     .where(eq(tenants.id, tenantId));
+
+  logBilling({ tenantId, provider: "shopify", action: "subscription.cancelled", success: true });
 }

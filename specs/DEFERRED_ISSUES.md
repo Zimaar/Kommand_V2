@@ -13,6 +13,12 @@ All dashboard and billing routes currently resolve the tenant from `x-tenant-id`
 Implement proper Clerk JWT verification on all authenticated routes before launch.
 **Files:** `apps/api/src/routes/dashboard.ts`, `apps/api/src/routes/billing.ts`
 
+### `processingMs` on async webhooks measures full pipeline time, not HTTP time
+`logWebhook` is called after `processInboundMessage` / `handleWebhook` resolves, which includes
+the full agent run (potentially minutes). The field name `processingMs` implies HTTP processing
+time. Rename to `pipelineMs` or split into `httpMs` + `pipelineMs` when touching webhook logging.
+**Files:** `apps/api/src/routes/webhooks.ts`, `apps/api/src/routes/shopify-webhooks.ts`
+
 ### `returnUrl` in `createShopifyCharge` includes manual `charge_id` param
 Shopify appends `charge_id` automatically on redirect — the manual `returnUrl` construction is misleading but harmless.
 Clean up when touching `shopify-billing.ts` next.

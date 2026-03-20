@@ -3,6 +3,7 @@ import { eq, and } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import { subscriptions, tenants } from "../db/schema.js";
 import { config, PLAN_PRICES, TRIAL_DAYS } from "../config.js";
+import { logBilling } from "../utils/monitoring.js";
 
 let _stripe: Stripe | null = null;
 
@@ -68,6 +69,8 @@ export async function createCheckoutSession(
     throw new Error("Stripe did not return a checkout URL");
   }
 
+  logBilling({ tenantId, provider: "stripe", action: "checkout.created", plan, success: true });
+
   return { url: session.url };
 }
 
@@ -111,6 +114,7 @@ export async function handleStripeWebhook(
           .set({ plan, planExpiresAt: null, updatedAt: new Date() })
           .where(eq(tenants.id, tenantId));
       }
+      logBilling({ tenantId, provider: "stripe", action: "subscription.created", plan, success: true });
       break;
     }
 
@@ -144,6 +148,7 @@ export async function handleStripeWebhook(
           .update(tenants)
           .set({ plan: "expired", updatedAt: new Date() })
           .where(eq(tenants.id, existing[0].tenantId));
+        logBilling({ tenantId: existing[0].tenantId, provider: "stripe", action: "subscription.cancelled", success: true });
       }
       break;
     }
@@ -176,6 +181,7 @@ export async function handleStripeWebhook(
         .update(tenants)
         .set({ plan: "expired", updatedAt: new Date() })
         .where(eq(tenants.id, existing[0].tenantId));
+      logBilling({ tenantId: existing[0].tenantId, provider: "stripe", action: "subscription.deleted", success: true });
       break;
     }
 
