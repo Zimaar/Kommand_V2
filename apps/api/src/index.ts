@@ -23,7 +23,10 @@ const loggerConfig =
       }
     : { level: "info" as const };
 
-const app = Fastify({ logger: loggerConfig });
+const app = Fastify({
+  logger: loggerConfig,
+  bodyLimit: 1 * 1024 * 1024, // 1 MB — reject oversized payloads before any processing
+});
 
 // ─── Plugins ──────────────────────────────────────────────────────────────────
 

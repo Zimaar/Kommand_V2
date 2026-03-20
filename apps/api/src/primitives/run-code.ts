@@ -67,6 +67,13 @@ async function runInSandbox(
   runId: string | undefined
 ): Promise<PrimitiveResponse> {
   // Throws on E2B API failure (network, auth, quota) — caller handles retry
+  //
+  // SECURITY — E2B sandbox isolation model (SECURITY.md):
+  // The sandbox runs on E2B's hosted infrastructure, NOT inside our network perimeter.
+  // It has no DATABASE_URL, ENCRYPTION_KEY, or any other credential — the env is empty.
+  // Tenant data enters only via the `code` string; results exit only via stdout + /tmp files.
+  // The sandbox cannot reach our internal services because it holds no knowledge of them.
+  // Each call creates a fresh sandbox; no state persists between runs.
   const sandbox = await Sandbox.create({ apiKey: e2bKey });
 
   try {
