@@ -203,17 +203,7 @@ export class JobScheduler {
     // so use "every 6 hours" offset via a single pattern.
     const proactiveCronFinal = `${staggerMin} */${6} * * *`;
 
-    const morningPrompt = `Generate the morning business brief.
-
-Pull yesterday's data and overnight activity. Include:
-- Revenue and order summary vs typical day
-- Any orders or payments needing attention
-- Top-selling products yesterday
-- Inventory alerts (anything low)
-- Cash position and overdue invoices (if Xero connected)
-- One thing to focus on today
-
-Keep it under 300 words. Format for WhatsApp mobile reading. Use emoji anchors. Lead with the most important number.`;
+    const morningPrompt = MORNING_BRIEF_PROMPT;
 
     const proactivePrompt = `Run a periodic business health check.
 
@@ -286,6 +276,35 @@ function hashToRange(str: string, min: number, max: number): number {
     hash = (hash * 31 + char.charCodeAt(0)) & 0xffffffff;
   }
   return min + (Math.abs(hash) % (max - min + 1));
+}
+
+// ─── Prompts ──────────────────────────────────────────────────────────────────
+
+export const MORNING_BRIEF_PROMPT = `Generate the morning business brief.
+
+Pull yesterday's full day data and any overnight activity. Present:
+- Revenue and orders vs a typical day (use memory for baselines — if you don't have baselines yet, just present the numbers and note you're establishing baselines)
+- Any orders needing attention (unfulfilled, failed payments)
+- Inventory alerts (items running low based on velocity)
+- Cash position and overdue invoices (if Xero connected)
+- One actionable recommendation for today
+
+Format for WhatsApp mobile reading. Use emoji section headers. Under 300 words.
+End with: "Reply with anything or ask me to dig deeper on any of these."`;
+
+/**
+ * Manually trigger a morning brief for a tenant.
+ * Used for testing and for the "Send brief now" dashboard action.
+ */
+export async function runMorningBrief(tenantId: string): Promise<string> {
+  const result = await runAgent(MORNING_BRIEF_PROMPT, tenantId, "morning_brief");
+
+  const adapter = getAdapter("whatsapp");
+  if (adapter) {
+    await adapter.sendText(tenantId, result.text);
+  }
+
+  return result.text;
 }
 
 // ─── Singleton ────────────────────────────────────────────────────────────────

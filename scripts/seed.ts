@@ -130,7 +130,7 @@ async function seed(): Promise<void> {
     .values({
       tenantId: tenant!.id,
       jobType: "morning_brief",
-      prompt: "Generate the morning business brief for Raamiz.",
+      prompt: "Generate the morning business brief.",
       cron: "0 8 * * *", // 8am daily (Asia/Dubai)
       isActive: true,
     })
