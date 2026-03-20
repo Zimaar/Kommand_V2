@@ -3,6 +3,10 @@
 import { useCallback } from "react";
 import { useAuth } from "@clerk/nextjs";
 
+const DEV_TENANT_REF =
+  process.env.NEXT_PUBLIC_DEV_TENANT_REF ?? "clerk_dev_seed_raamiz";
+const HAS_CLERK = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY);
+
 /**
  * Returns a stable `buildHeaders` function that injects the Clerk Bearer token
  * and x-tenant-id header into every API request.
@@ -13,19 +17,42 @@ import { useAuth } from "@clerk/nextjs";
  *     safely appear in useCallback / useEffect dependency arrays without needing
  *     eslint-disable comments.
  */
-export function useApiClient(): {
+function useClerkApiClient(): {
   buildHeaders: () => Promise<Record<string, string>>;
 } {
   const { userId, getToken } = useAuth();
 
   const buildHeaders = useCallback(async (): Promise<Record<string, string>> => {
-    const token = await getToken();
+    let token = "";
+    try {
+      token = (await getToken()) ?? "";
+    } catch {
+      // In local dev we allow the dashboard to keep working without a fully
+      // configured Clerk app by falling back to a seeded tenant reference.
+    }
+
+    const tenantRef = userId ?? DEV_TENANT_REF;
     return {
       "Content-Type": "application/json",
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(userId ? { "x-tenant-id": userId } : {}),
+      ...(tenantRef ? { "x-tenant-id": tenantRef } : {}),
     };
   }, [userId, getToken]);
 
   return { buildHeaders };
 }
+
+function useDevApiClient(): {
+  buildHeaders: () => Promise<Record<string, string>>;
+} {
+  const buildHeaders = useCallback(async (): Promise<Record<string, string>> => {
+    return {
+      "Content-Type": "application/json",
+      "x-tenant-id": DEV_TENANT_REF,
+    };
+  }, []);
+
+  return { buildHeaders };
+}
+
+export const useApiClient = HAS_CLERK ? useClerkApiClient : useDevApiClient;

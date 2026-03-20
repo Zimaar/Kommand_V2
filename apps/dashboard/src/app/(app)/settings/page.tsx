@@ -112,7 +112,7 @@ export default function SettingsPage() {
           )}
         </div>
         <a
-          href={`${process.env.NEXT_PUBLIC_API_URL}/webhooks/xero/connect`}
+          href="/webhooks/xero/connect"
           className="mt-2 inline-block text-sm text-blue-600 hover:underline"
         >
           + Connect Xero

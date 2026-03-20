@@ -17,16 +17,70 @@ import { sendError, UnauthorizedError, NotFoundError } from "../utils/errors.js"
 import { sendTextToPhone } from "../channels/whatsapp.js";
 import { buildShopifyInstallUrl } from "../auth/shopify-oauth.js";
 import { generatePKCE, buildXeroAuthUrl } from "../auth/xero-oauth.js";
-import { NONCE_TTL_SECONDS } from "./auth.js";
+import { config } from "../config.js";
+import { NONCE_TTL_SECONDS, SHOPIFY_LAUNCH_TTL_SECONDS, shopifyLaunchKey } from "./auth.js";
 import { redis } from "../lib/redis.js";
 
 // Middleware: resolve tenant from Clerk JWT
 async function resolveTenant(req: FastifyRequest): Promise<string> {
-  // In production: verify Clerk JWT from Authorization header
-  // For now: read tenant_id from header (replace with proper Clerk verification)
-  const tenantId = req.headers["x-tenant-id"] as string;
-  if (!tenantId) {throw new UnauthorizedError("Missing tenant ID");}
+  // In production: verify Clerk JWT from Authorization header.
+  // For now we accept either:
+  //  - a raw tenant UUID
+  //  - a Clerk user ID, which we resolve to the tenant row
+  const tenantRef = req.headers["x-tenant-id"] as string | undefined;
+  if (!tenantRef) {throw new UnauthorizedError("Missing tenant ID");}
+
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    tenantRef
+  );
+
+  if (isUuid) {
+    return tenantRef;
+  }
+
+  const rows = await db
+    .select({ id: tenants.id })
+    .from(tenants)
+    .where(eq(tenants.clerkId, tenantRef))
+    .limit(1);
+
+  const tenantId = rows[0]?.id;
+  if (!tenantId) {
+    if (process.env["NODE_ENV"] === "development") {
+      const devRows = await db
+        .select({ id: tenants.id })
+        .from(tenants)
+        .limit(2);
+
+      if (devRows.length === 1 && devRows[0]?.id) {
+        req.log.warn({ tenantRef, fallbackTenantId: devRows[0].id }, "Falling back to sole dev tenant");
+        return devRows[0].id;
+      }
+    }
+
+    throw new UnauthorizedError("Unknown tenant");
+  }
+
   return tenantId;
+}
+
+function buildPostShopifyRedirect(shop: string, linkedWhatsapp: boolean): string {
+  if (linkedWhatsapp) {
+    return `${config.DASHBOARD_URL}/overview?shop=${encodeURIComponent(shop)}`;
+  }
+
+  return `${config.DASHBOARD_URL}/onboarding?step=2&connected=shopify&shop=${encodeURIComponent(shop)}`;
+}
+
+async function hasLinkedWhatsapp(tenantId: string): Promise<boolean> {
+  const row = await db
+    .select({ id: channels.id })
+    .from(channels)
+    .where(and(eq(channels.tenantId, tenantId), eq(channels.type, "whatsapp"), eq(channels.isActive, true)))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
+  return Boolean(row?.id);
 }
 
 export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
@@ -572,6 +626,81 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
 
       const url = buildShopifyInstallUrl(shop, state);
       return reply.send({ url });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // POST /api/dashboard/connections/shopify/launch/resume
+  // Resume a Shopify Admin launch after the owner signs in to Kommand.
+  app.post("/connections/shopify/launch/resume", async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await resolveTenant(req);
+      const { launch: launchId } = req.body as { launch?: string };
+
+      if (!launchId) {
+        return reply.status(400).send({ error: "Missing launch token" });
+      }
+
+      const rawLaunch = await redis.get(shopifyLaunchKey(launchId));
+      if (!rawLaunch) {
+        return reply.status(400).send({
+          error: "This Shopify launch expired. Re-open Kommand from your Shopify Admin and try again.",
+        });
+      }
+
+      const launchData = JSON.parse(rawLaunch) as {
+        shop?: string;
+        host?: string;
+        claimedTenantId?: string;
+      };
+      const { shop, claimedTenantId } = launchData;
+      if (!shop || !/^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(shop)) {
+        return reply.status(400).send({ error: "Invalid shop domain" });
+      }
+
+      if (claimedTenantId && claimedTenantId !== tenantId) {
+        return reply.status(409).send({
+          error: "This Shopify launch is already being used by a different Kommand account.",
+        });
+      }
+
+      const existingStore = await db
+        .select({
+          tenantId: stores.tenantId,
+          isActive: stores.isActive,
+        })
+        .from(stores)
+        .where(and(eq(stores.platform, "shopify"), eq(stores.domain, shop)))
+        .limit(1)
+        .then((rows) => rows[0] ?? null);
+
+      if (existingStore?.tenantId && existingStore.tenantId !== tenantId) {
+        return reply.status(409).send({
+          error: "This Shopify store is already linked to another Kommand account.",
+        });
+      }
+
+      if (existingStore?.tenantId === tenantId && existingStore.isActive) {
+        await redis.set(
+          shopifyLaunchKey(launchId),
+          JSON.stringify({ ...launchData, shop, claimedTenantId: tenantId }),
+          "EX",
+          SHOPIFY_LAUNCH_TTL_SECONDS
+        );
+        return reply.send({ url: buildPostShopifyRedirect(shop, await hasLinkedWhatsapp(tenantId)) });
+      }
+
+      const state = crypto.randomUUID();
+      await redis.set(`oauth:nonce:${state}`, tenantId, "EX", NONCE_TTL_SECONDS);
+      await redis.set(
+        shopifyLaunchKey(launchId),
+        JSON.stringify({ ...launchData, shop, claimedTenantId: tenantId }),
+        "EX",
+        SHOPIFY_LAUNCH_TTL_SECONDS
+      );
+
+      return reply.send({ url: buildShopifyInstallUrl(shop, state) });
     } catch (error) {
       return sendError(reply, error);
     }

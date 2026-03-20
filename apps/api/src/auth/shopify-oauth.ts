@@ -4,6 +4,13 @@ import { stores } from "../db/schema.js";
 import { encryptToken } from "./encryption.js";
 import { config } from "../config.js";
 
+export interface ShopifyShopProfile {
+  name: string | null;
+  email: string | null;
+  timezone: string | null;
+  currency: string | null;
+}
+
 export function buildShopifyInstallUrl(shop: string, state: string): string {
   const scopes = config.SHOPIFY_SCOPES;
   const redirectUri = `${config.API_URL}/auth/shopify/callback`;
@@ -13,7 +20,6 @@ export function buildShopifyInstallUrl(shop: string, state: string): string {
     scope: scopes,
     redirect_uri: redirectUri,
     state,
-    "grant_options[]": "per-user",
   });
 
   return `https://${shop}/admin/oauth/authorize?${params.toString()}`;
@@ -57,6 +63,52 @@ export async function exchangeShopifyCode(
 
   const data = await res.json() as { access_token: string; scope: string };
   return data.access_token;
+}
+
+export async function fetchShopifyShopProfile(
+  shop: string,
+  accessToken: string
+): Promise<ShopifyShopProfile> {
+  try {
+    const res = await fetch(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/shop.json`, {
+      headers: { "X-Shopify-Access-Token": accessToken },
+    });
+
+    if (!res.ok) {
+      return {
+        name: null,
+        email: null,
+        timezone: null,
+        currency: null,
+      };
+    }
+
+    const data = await res.json() as {
+      shop?: {
+        name?: string | null;
+        email?: string | null;
+        iana_timezone?: string | null;
+        timezone?: string | null;
+        currency?: string | null;
+      };
+    };
+
+    const shopData = data.shop;
+
+    return {
+      name: shopData?.name ?? null,
+      email: shopData?.email ?? null,
+      timezone: shopData?.iana_timezone ?? shopData?.timezone ?? null,
+      currency: shopData?.currency ?? null,
+    };
+  } catch {
+    return {
+      name: null,
+      email: null,
+      timezone: null,
+      currency: null,
+    };
+  }
 }
 
 export const SHOPIFY_API_VERSION = "2024-10";
@@ -116,23 +168,13 @@ export async function saveShopifyStore(
   tenantId: string,
   shop: string,
   accessToken: string,
-  scopes: string[]
+  scopes: string[],
+  shopProfile?: ShopifyShopProfile
 ): Promise<void> {
   const { enc, iv, tag } = encryptToken(accessToken);
 
-  // Get store name from Shopify
-  let storeName: string | null = null;
-  try {
-    const res = await fetch(`https://${shop}/admin/api/${SHOPIFY_API_VERSION}/shop.json`, {
-      headers: { "X-Shopify-Access-Token": accessToken },
-    });
-    if (res.ok) {
-      const data = await res.json() as { shop?: { name?: string } };
-      storeName = data.shop?.name ?? null;
-    }
-  } catch {
-    // Non-fatal
-  }
+  const profile = shopProfile ?? (await fetchShopifyShopProfile(shop, accessToken));
+  const storeName = profile.name;
 
   await db
     .insert(stores)

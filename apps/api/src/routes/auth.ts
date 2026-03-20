@@ -1,5 +1,8 @@
 import crypto from "node:crypto";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
+import { and, eq } from "drizzle-orm";
+import { db } from "../db/connection.js";
+import { channels } from "../db/schema.js";
 import { redis } from "../lib/redis.js";
 import { config } from "../config.js";
 import {
@@ -19,13 +22,69 @@ import {
 
 // Nonce TTL: 5 minutes — exported so dashboard routes can share the same value
 export const NONCE_TTL_SECONDS = 300;
+export const SHOPIFY_LAUNCH_TTL_SECONDS = 900;
 
 function nonceKey(state: string): string {
   return `oauth:nonce:${state}`;
 }
 
+export function shopifyLaunchKey(launchId: string): string {
+  return `oauth:shopify:launch:${launchId}`;
+}
+
+function buildPostShopifyRedirect(shop: string, linkedWhatsapp: boolean): string {
+  if (linkedWhatsapp) {
+    return `${config.DASHBOARD_URL}/overview?shop=${encodeURIComponent(shop)}`;
+  }
+
+  return `${config.DASHBOARD_URL}/onboarding?step=2&connected=shopify&shop=${encodeURIComponent(shop)}`;
+}
+
+async function hasLinkedWhatsapp(tenantId: string): Promise<boolean> {
+  const row = await db
+    .select({ id: channels.id })
+    .from(channels)
+    .where(and(eq(channels.tenantId, tenantId), eq(channels.type, "whatsapp"), eq(channels.isActive, true)))
+    .limit(1)
+    .then((rows) => rows[0] ?? null);
+
+  return Boolean(row?.id);
+}
+
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   // ─── Shopify OAuth ──────────────────────────────────────────────────────────
+
+  // GET /auth/shopify/launch?shop=&host=&hmac=&timestamp=
+  // Validates Shopify launch params, stores the shop briefly, and hands off
+  // into the dashboard onboarding flow where the user can sign in/up first.
+  app.get("/shopify/launch", async (req: FastifyRequest, reply: FastifyReply) => {
+    const params = req.query as Record<string, string>;
+    const { shop, hmac, timestamp } = params;
+
+    if (!shop || !hmac || !timestamp) {
+      return reply.status(400).send({ error: "Missing shop, hmac, or timestamp" });
+    }
+
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9-]*\.myshopify\.com$/.test(shop)) {
+      return reply.status(400).send({ error: "Invalid shop domain" });
+    }
+
+    if (!verifyShopifyHmac(params, hmac)) {
+      return reply.status(401).send({ error: "Invalid HMAC" });
+    }
+
+    const launchId = crypto.randomUUID();
+    await redis.set(
+      shopifyLaunchKey(launchId),
+      JSON.stringify({ shop, host: params.host ?? "" }),
+      "EX",
+      SHOPIFY_LAUNCH_TTL_SECONDS
+    );
+
+    return reply.redirect(
+      `${config.DASHBOARD_URL}/shopify/launch?launch=${encodeURIComponent(launchId)}`
+    );
+  });
 
   // GET /auth/shopify?shop={domain}&tenant_id={id}
   // Generates OAuth URL, stores nonce in Redis, redirects to Shopify
@@ -81,9 +140,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
         app.log.warn({ err, shop }, "Shopify webhook registration failed (non-fatal)");
       });
 
-      return reply.redirect(
-        `${config.DASHBOARD_URL}/onboarding?step=2&connected=shopify&shop=${encodeURIComponent(shop)}`
-      );
+      return reply.redirect(buildPostShopifyRedirect(shop, await hasLinkedWhatsapp(tenantId)));
     } catch (error) {
       app.log.error(error, "Shopify OAuth callback error");
       return reply.redirect(`${config.DASHBOARD_URL}/onboarding?error=shopify_oauth_failed`);

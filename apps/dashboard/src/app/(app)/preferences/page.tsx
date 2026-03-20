@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useApiClient } from "@/hooks/use-api-client";
+import { getApiErrorMessage } from "@/lib/api-errors";
 import { API_URL, TIMEZONES, CURRENCIES } from "@/lib/constants";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -190,8 +191,8 @@ export default function PreferencesPage(): React.ReactElement {
         body: JSON.stringify({ timezone, currency, briefTime, notifications }),
       });
       if (!res.ok) {
-        const data = (await res.json().catch(() => ({}))) as { error?: string };
-        setSaveError(data.error ?? "Failed to save. Please try again.");
+        const data = await res.json().catch(() => null);
+        setSaveError(getApiErrorMessage(data, "Failed to save. Please try again."));
         return;
       }
       setSaveSuccess(true);

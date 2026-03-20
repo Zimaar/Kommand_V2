@@ -1,6 +1,11 @@
 import { auth } from "@clerk/nextjs/server";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+const serverApiUrl =
+  process.env.INTERNAL_API_URL ??
+  (process.env.NODE_ENV === "development"
+    ? "http://127.0.0.1:3000"
+    : process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3000");
+const API_URL = typeof window === "undefined" ? serverApiUrl : "";
 
 export async function apiFetch<T>(
   path: string,

@@ -8,6 +8,12 @@
  *   - Store: test-store.myshopify.com (Shopify)
  *   - WhatsApp channel: +971501234567
  *   - Morning brief scheduled job
+ *
+ * Optional env overrides:
+ *   - CLERK_ID
+ *   - EMAIL
+ *   - NAME
+ *   - PHONE
  */
 
 // Set dev defaults before any imports that read process.env
@@ -39,11 +45,15 @@ function encrypt(plaintext: string, keyHex: string): { enc: string; iv: string; 
 
 async function seed(): Promise<void> {
   const encKey = process.env["ENCRYPTION_KEY"]!;
+  const clerkId = process.env["CLERK_ID"] ?? "clerk_dev_seed_raamiz";
+  const email = process.env["EMAIL"] ?? "test@kommand.dev";
+  const name = process.env["NAME"] ?? "Raamiz";
+  const phone = process.env["PHONE"] ?? "+971501234567";
   console.log("🌱 Seeding database...\n");
 
   // ── Tenant ──────────────────────────────────────────────────────────────────
   const existingTenant = await db.query.tenants.findFirst({
-    where: (t, { eq }) => eq(t.email, "test@kommand.dev"),
+    where: (t, { eq }) => eq(t.email, email),
   });
 
   if (existingTenant) {
@@ -56,10 +66,10 @@ async function seed(): Promise<void> {
   const [tenant] = await db
     .insert(schema.tenants)
     .values({
-      clerkId: "clerk_dev_seed_raamiz",
-      email: "test@kommand.dev",
-      name: "Raamiz",
-      phone: "+971501234567",
+      clerkId,
+      email,
+      name,
+      phone,
       timezone: "Asia/Dubai",
       currency: "AED",
       plan: "growth",
@@ -115,7 +125,7 @@ async function seed(): Promise<void> {
     .values({
       tenantId: tenant!.id,
       type: "whatsapp",
-      identifier: "+971501234567",
+      identifier: phone,
       isActive: true,
     })
     .returning();

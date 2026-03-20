@@ -45,8 +45,22 @@ await app.register(helmet, {
   contentSecurityPolicy: false,
 });
 
+const allowedOrigins = new Set([config.DASHBOARD_URL, "http://localhost:3001", "http://127.0.0.1:3001"]);
+const localtunnelPattern = /^https:\/\/[a-z0-9-]+\.loca\.lt$/i;
+
 await app.register(cors, {
-  origin: config.DASHBOARD_URL,
+  origin: (origin, cb) => {
+    // Allow server-side / curl requests without an Origin header.
+    if (!origin) {
+      cb(null, true);
+      return;
+    }
+
+    const isAllowed =
+      allowedOrigins.has(origin) || (config.NODE_ENV === "development" && localtunnelPattern.test(origin));
+
+    cb(null, isAllowed);
+  },
   credentials: true,
 });
 

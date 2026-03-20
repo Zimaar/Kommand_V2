@@ -1,4 +1,11 @@
-export const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3000";
+const serverApiUrl =
+  process.env.INTERNAL_API_URL ??
+  (process.env.NODE_ENV === "development"
+    ? "http://127.0.0.1:3000"
+    : process.env.API_URL ?? process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:3000");
+
+// Browser calls stay same-origin so the dashboard can proxy them to the API.
+export const API_URL = typeof window === "undefined" ? serverApiUrl : "";
 
 export const COUNTRY_CODES = [
   { code: "+971", label: "🇦🇪 +971" },

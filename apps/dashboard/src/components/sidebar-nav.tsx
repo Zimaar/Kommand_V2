@@ -10,7 +10,7 @@ const navItems = [
   { href: "/chat-log", label: "Chat Log", icon: MessageSquare },
 ];
 
-export function SidebarNav(): React.ReactElement {
+export default function SidebarNav(): React.ReactElement {
   return (
     <nav className="flex-1 px-3 py-4 space-y-0.5">
       {navItems.map(({ href, label, icon }) => (
