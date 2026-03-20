@@ -205,20 +205,7 @@ export class JobScheduler {
 
     const morningPrompt = MORNING_BRIEF_PROMPT;
 
-    const proactivePrompt = `Run a periodic business health check.
-
-Pull key metrics from the last 24 hours and compare against the same period last week and the trailing 30-day average.
-
-Look for anything notable:
-- Revenue or order count significantly above or below normal (>20% variance)
-- Inventory items approaching stockout (less than 5 units)
-- Overdue invoices that need follow-up (if Xero connected)
-- Unusual patterns (spike in returns, change in AOV, new high-value customer)
-
-If you find something worth reporting, compose a concise message with specific numbers.
-If nothing notable, respond with exactly "NO_ALERT" and nothing else.
-
-Store any new patterns or observations in memory for future reference.`;
+    const proactivePrompt = PROACTIVE_ANALYSIS_PROMPT;
 
     const inserted = await db
       .insert(scheduledJobs)
@@ -279,6 +266,47 @@ function hashToRange(str: string, min: number, max: number): number {
 }
 
 // ─── Prompts ──────────────────────────────────────────────────────────────────
+
+export const PROACTIVE_ANALYSIS_PROMPT = `Run a periodic business health check.
+
+Pull key metrics from the last 6 hours. Compare against:
+1. Same window yesterday
+2. Trailing 7-day average for this time window (use memory or calculate)
+
+Look for anything an owner should know about:
+- Revenue or order volume anomalies (>20% deviation from norm)
+- Inventory items that will stock out within 3 days at current velocity
+- Overdue invoices (if Xero connected)
+- Unusual patterns: spike in a specific product, new geography, return rate changes
+- Anything else a sharp COO would flag
+
+If you find something worth reporting:
+- Write a concise alert message
+- Include the specific numbers
+- Suggest a concrete action
+- End with a question to prompt engagement
+
+If nothing notable, store any updated baselines in memory and respond with exactly: NO_ALERT
+
+Always update memory with current baselines and patterns you observe.`;
+
+/**
+ * Manually trigger a proactive analysis for a tenant.
+ * Sends an alert to WhatsApp only if the agent finds something notable.
+ * Returns the agent's text (either the alert or "NO_ALERT").
+ */
+export async function runProactiveAnalysis(tenantId: string): Promise<string> {
+  const result = await runAgent(PROACTIVE_ANALYSIS_PROMPT, tenantId, "proactive");
+
+  if (!result.text.includes("NO_ALERT")) {
+    const adapter = getAdapter("whatsapp");
+    if (adapter) {
+      await adapter.sendText(tenantId, result.text);
+    }
+  }
+
+  return result.text;
+}
 
 export const MORNING_BRIEF_PROMPT = `Generate the morning business brief.
 
