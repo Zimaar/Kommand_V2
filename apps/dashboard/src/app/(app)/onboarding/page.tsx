@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { useAuth } from "@clerk/nextjs";
 
@@ -90,9 +90,11 @@ function ProgressIndicator({
       <div className="absolute top-4 left-8 right-8 h-px bg-gray-200" />
 
       {STEPS.map((step) => {
-        const isDone = step.id < activeStep;
+        // Step 1 is only "done" if shopify was actually connected (not skipped)
+        const isDone =
+          step.id === 1 ? activeStep > 1 && !!shopDomain : step.id < activeStep;
         const isActive = step.id === activeStep;
-        const isFuture = step.id > activeStep;
+        const isFuture = !isDone && !isActive;
 
         return (
           <div key={step.id} className="relative z-10 flex flex-col items-center gap-2 flex-1">
@@ -489,7 +491,7 @@ function detectTimezone(): string {
   }
 }
 
-export default function OnboardingPage(): React.ReactElement {
+function OnboardingPageInner(): React.ReactElement {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { userId, getToken } = useAuth();
@@ -695,5 +697,13 @@ export default function OnboardingPage(): React.ReactElement {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function OnboardingPage(): React.ReactElement {
+  return (
+    <Suspense>
+      <OnboardingPageInner />
+    </Suspense>
   );
 }
