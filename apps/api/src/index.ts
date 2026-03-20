@@ -11,6 +11,7 @@ import { shopifyWebhookRoutes } from "./routes/shopify-webhooks.js";
 import { dashboardRoutes } from "./routes/dashboard.js";
 import { authRoutes } from "./routes/auth.js";
 import { redis } from "./lib/redis.js";
+import { scheduler } from "./proactive/scheduler.js";
 
 const startedAt = Date.now();
 
@@ -81,6 +82,7 @@ await app.register(dashboardRoutes, { prefix: "/api/dashboard" });
 
 async function shutdown(signal: string): Promise<void> {
   app.log.info(`Received ${signal}, shutting down gracefully…`);
+  await scheduler.shutdown();
   await app.close();
   await redis.quit();
   process.exit(0);
@@ -105,6 +107,8 @@ try {
   await redis.connect();
   await app.listen({ port: config.PORT, host: "0.0.0.0" });
   app.log.info(`Kommand API running on port ${config.PORT}`);
+  // Start job scheduler after server is ready
+  await scheduler.init();
 } catch (err) {
   app.log.error(err);
   process.exit(1);
