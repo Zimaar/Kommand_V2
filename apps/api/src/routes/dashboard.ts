@@ -1,6 +1,6 @@
 import crypto from "node:crypto";
 import type { FastifyInstance, FastifyRequest, FastifyReply } from "fastify";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, ilike, gte } from "drizzle-orm";
 import { db } from "../db/connection.js";
 import {
   tenants,
@@ -10,6 +10,7 @@ import {
   agentRuns,
   messages,
   scheduledJobs,
+  memories,
 } from "../db/schema.js";
 import { UpdatePreferencesSchema } from "@kommand/shared";
 import { sendError, UnauthorizedError, NotFoundError } from "../utils/errors.js";
@@ -355,6 +356,169 @@ export async function dashboardRoutes(app: FastifyInstance): Promise<void> {
       ]);
 
       return reply.send({ success: true });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // GET /api/dashboard/connections — unified list of all integrations
+  app.get("/connections", async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await resolveTenant(req);
+      const [storeRows, connRows, channelRows] = await Promise.all([
+        db.select().from(stores).where(eq(stores.tenantId, tenantId)),
+        db.select().from(accountingConnections).where(eq(accountingConnections.tenantId, tenantId)),
+        db.select().from(channels).where(eq(channels.tenantId, tenantId)),
+      ]);
+      return reply.send({
+        stores: storeRows.map((s) => ({
+          id: s.id,
+          platform: s.platform,
+          domain: s.domain,
+          name: s.name,
+          isActive: s.isActive,
+          createdAt: s.createdAt,
+        })),
+        connections: connRows.map((c) => ({
+          id: c.id,
+          platform: c.platform,
+          orgName: c.orgName,
+          isActive: c.isActive,
+          createdAt: c.createdAt,
+        })),
+        channels: channelRows.map((c) => ({
+          id: c.id,
+          type: c.type,
+          identifier: c.identifier,
+          isActive: c.isActive,
+          createdAt: c.createdAt,
+        })),
+      });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // GET /api/dashboard/messages — paginated with optional primitive calls
+  app.get("/messages", async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await resolveTenant(req);
+      const { limit: limitStr = "50", offset: offsetStr = "0" } = req.query as Record<string, string>;
+      const limit = Math.min(Number(limitStr) || 50, 200);
+      const offset = Number(offsetStr) || 0;
+
+      const rows = await db
+        .select({
+          id: messages.id,
+          direction: messages.direction,
+          role: messages.role,
+          content: messages.content,
+          createdAt: messages.createdAt,
+          primitiveCalls: agentRuns.primitiveCalls,
+        })
+        .from(messages)
+        .leftJoin(agentRuns, eq(messages.agentRunId, agentRuns.id))
+        .where(eq(messages.tenantId, tenantId))
+        .orderBy(desc(messages.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      return reply.send(rows.reverse());
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // GET /api/dashboard/messages/search?q=
+  app.get("/messages/search", async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await resolveTenant(req);
+      const { q = "" } = req.query as Record<string, string>;
+      if (!q.trim()) { return reply.send([]); }
+
+      const rows = await db
+        .select({
+          id: messages.id,
+          direction: messages.direction,
+          role: messages.role,
+          content: messages.content,
+          createdAt: messages.createdAt,
+          primitiveCalls: agentRuns.primitiveCalls,
+        })
+        .from(messages)
+        .leftJoin(agentRuns, eq(messages.agentRunId, agentRuns.id))
+        .where(and(eq(messages.tenantId, tenantId), ilike(messages.content, `%${q}%`)))
+        .orderBy(desc(messages.createdAt))
+        .limit(50);
+
+      return reply.send(rows.reverse());
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // GET /api/dashboard/memories — list active memories
+  app.get("/memories", async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await resolveTenant(req);
+      const rows = await db
+        .select({
+          id: memories.id,
+          content: memories.content,
+          category: memories.category,
+          createdAt: memories.createdAt,
+        })
+        .from(memories)
+        .where(and(eq(memories.tenantId, tenantId), eq(memories.isActive, true)))
+        .orderBy(desc(memories.createdAt));
+      return reply.send(rows);
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // DELETE /api/dashboard/memories/:id — soft delete
+  app.delete("/memories/:id", async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await resolveTenant(req);
+      const { id } = req.params as { id: string };
+      await db
+        .update(memories)
+        .set({ isActive: false })
+        .where(and(eq(memories.id, id), eq(memories.tenantId, tenantId)));
+      return reply.send({ success: true });
+    } catch (error) {
+      return sendError(reply, error);
+    }
+  });
+
+  // GET /api/dashboard/usage — runs + tokens this month, plan limits
+  app.get("/usage", async (req: FastifyRequest, reply: FastifyReply) => {
+    try {
+      const tenantId = await resolveTenant(req);
+      const startOfMonth = new Date(new Date().getFullYear(), new Date().getMonth(), 1);
+
+      const [runRows, tenantRow] = await Promise.all([
+        db
+          .select({ tokensInput: agentRuns.tokensInput, tokensOutput: agentRuns.tokensOutput })
+          .from(agentRuns)
+          .where(and(eq(agentRuns.tenantId, tenantId), gte(agentRuns.createdAt, startOfMonth))),
+        db.select({ plan: tenants.plan }).from(tenants).where(eq(tenants.id, tenantId)).limit(1).then((r) => r[0]),
+      ]);
+
+      const plan = tenantRow?.plan ?? "trial";
+      const runsThisMonth = runRows.length;
+      const tokensThisMonth = runRows.reduce((sum, r) => sum + (r.tokensInput ?? 0) + (r.tokensOutput ?? 0), 0);
+
+      const LIMITS: Record<string, { runs: number; tokens: number }> = {
+        trial: { runs: 50, tokens: 100_000 },
+        starter: { runs: 500, tokens: 1_000_000 },
+        growth: { runs: 2_000, tokens: 5_000_000 },
+        pro: { runs: 10_000, tokens: 25_000_000 },
+      };
+      const limits = LIMITS[plan] ?? { runs: 50, tokens: 100_000 };
+
+      return reply.send({ plan, runsThisMonth, tokensThisMonth, runsLimit: limits.runs, tokensLimit: limits.tokens });
     } catch (error) {
       return sendError(reply, error);
     }
