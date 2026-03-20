@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LegalNav, LegalSection, LegalFooter } from "@/components/legal";
 
 export const dynamic = "force-static";
 
@@ -8,27 +9,25 @@ export const metadata: Metadata = {
   description: "How Kommand collects, stores, and protects your data.",
 };
 
-const YEAR = new Date().getFullYear();
-
 export default function PrivacyPolicyPage(): React.ReactElement {
   return (
     <div className="min-h-screen bg-white text-gray-900">
-      <Nav />
+      <LegalNav />
 
       <main className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="text-4xl font-bold mb-2">Privacy Policy</h1>
         <p className="text-gray-400 text-sm mb-12">Last updated: 20 March 2026</p>
 
         <div className="prose-kommand">
-          <Section title="1. Who we are">
+          <LegalSection title="1. Who we are">
             <p>
               Kommand (&ldquo;we&rdquo;, &ldquo;us&rdquo;, &ldquo;our&rdquo;) is a software-as-a-service product that
               provides an autonomous AI agent for small business operations, distributed via the Shopify App Store.
               This policy explains how we collect, use, store, and protect your data when you use Kommand.
             </p>
-          </Section>
+          </LegalSection>
 
-          <Section title="2. Data we collect">
+          <LegalSection title="2. Data we collect">
             <h4 className="font-semibold text-gray-900 mt-4 mb-2">Account data</h4>
             <p>
               When you sign up we collect your name, email address, and authentication credentials via our
@@ -77,9 +76,9 @@ export default function PrivacyPolicyPage(): React.ReactElement {
               When the agent creates files (PDFs, spreadsheets, charts), they are uploaded to cloud storage
               with download links that <strong>expire after 24 hours</strong>.
             </p>
-          </Section>
+          </LegalSection>
 
-          <Section title="3. How we store and protect your data">
+          <LegalSection title="3. How we store and protect your data">
             <ul className="list-disc pl-5 space-y-2 mt-2">
               <li>
                 <strong>Database:</strong> PostgreSQL 16 hosted on Supabase with encryption at rest and TLS
@@ -101,9 +100,9 @@ export default function PrivacyPolicyPage(): React.ReactElement {
                 via HMAC-SHA256 signature checks using timing-safe comparison to prevent forgery.
               </li>
             </ul>
-          </Section>
+          </LegalSection>
 
-          <Section title="4. Third-party services">
+          <LegalSection title="4. Third-party services">
             <p>We use the following sub-processors to deliver the service:</p>
             <div className="overflow-x-auto mt-3">
               <table className="w-full text-sm border border-gray-200 rounded-lg overflow-hidden">
@@ -125,9 +124,9 @@ export default function PrivacyPolicyPage(): React.ReactElement {
                 </tbody>
               </table>
             </div>
-          </Section>
+          </LegalSection>
 
-          <Section title="5. Your rights (GDPR)">
+          <LegalSection title="5. Your rights (GDPR)">
             <p>If you are in the EU/EEA or the UK, you have the following rights:</p>
             <ul className="list-disc pl-5 space-y-2 mt-2">
               <li><strong>Access:</strong> Request a copy of all data we hold about you.</li>
@@ -143,9 +142,9 @@ export default function PrivacyPolicyPage(): React.ReactElement {
               To exercise any of these rights, email <strong>privacy@kommand.dev</strong> or use the
               self-service options in the dashboard under <strong>Settings</strong>.
             </p>
-          </Section>
+          </LegalSection>
 
-          <Section title="6. Shopify GDPR compliance">
+          <LegalSection title="6. Shopify GDPR compliance">
             <p>
               As a Shopify app, we implement the three mandatory GDPR webhooks:
             </p>
@@ -154,9 +153,9 @@ export default function PrivacyPolicyPage(): React.ReactElement {
               <li><strong>Customer data erasure:</strong> We delete all records associated with the specified customer.</li>
               <li><strong>Shop data erasure:</strong> When you uninstall Kommand, we delete all data associated with your store within 48 hours.</li>
             </ul>
-          </Section>
+          </LegalSection>
 
-          <Section title="7. Data retention">
+          <LegalSection title="7. Data retention">
             <ul className="list-disc pl-5 space-y-2 mt-2">
               <li>Generated files: <strong>24 hours</strong> (auto-expired download links)</li>
               <li>Agent run logs: <strong>90 days</strong></li>
@@ -164,88 +163,32 @@ export default function PrivacyPolicyPage(): React.ReactElement {
               <li>Business memories: retained while your account is active (individually deletable)</li>
               <li>On account deletion: all data is permanently removed within 48 hours</li>
             </ul>
-          </Section>
+          </LegalSection>
 
-          <Section title="8. Cookies">
+          <LegalSection title="8. Cookies">
             <p>
               The Kommand dashboard uses essential cookies for authentication (session management via Clerk).
               We do not use tracking, advertising, or analytics cookies.
             </p>
-          </Section>
+          </LegalSection>
 
-          <Section title="9. Changes to this policy">
+          <LegalSection title="9. Changes to this policy">
             <p>
               We may update this policy from time to time. Material changes will be communicated via the
               dashboard and/or email. Continued use of Kommand after changes constitutes acceptance.
             </p>
-          </Section>
+          </LegalSection>
 
-          <Section title="10. Contact">
+          <LegalSection title="10. Contact">
             <p>
               For privacy questions or data requests, contact us at{" "}
               <strong>privacy@kommand.dev</strong>.
             </p>
-          </Section>
+          </LegalSection>
         </div>
       </main>
 
       <LegalFooter />
     </div>
-  );
-}
-
-// ─── Shared components ────────────────────────────────────────────────────────
-
-function Nav(): React.ReactElement {
-  return (
-    <nav className="sticky top-0 z-50 border-b border-gray-100 bg-white/80 backdrop-blur-md">
-      <div className="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-[#534AB7] flex items-center justify-center">
-            <span className="text-white text-xs font-bold">K</span>
-          </div>
-          <span className="font-semibold text-gray-900 tracking-tight">Kommand</span>
-        </Link>
-        <Link
-          href="/"
-          className="text-sm text-gray-400 hover:text-gray-900 transition-colors"
-        >
-          Back to home
-        </Link>
-      </div>
-    </nav>
-  );
-}
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}): React.ReactElement {
-  return (
-    <section className="mb-10">
-      <h3 className="text-xl font-bold text-gray-900 mb-3">{title}</h3>
-      <div className="text-gray-600 text-[15px] leading-relaxed space-y-3">{children}</div>
-    </section>
-  );
-}
-
-function LegalFooter(): React.ReactElement {
-  return (
-    <footer className="border-t border-gray-100 py-8">
-      <div className="max-w-3xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <p className="text-gray-400 text-sm">&copy; {YEAR} Kommand</p>
-        <div className="flex gap-5">
-          <Link href="/privacy" className="text-gray-400 hover:text-gray-900 text-sm transition-colors">
-            Privacy
-          </Link>
-          <Link href="/terms" className="text-gray-400 hover:text-gray-900 text-sm transition-colors">
-            Terms
-          </Link>
-        </div>
-      </div>
-    </footer>
   );
 }

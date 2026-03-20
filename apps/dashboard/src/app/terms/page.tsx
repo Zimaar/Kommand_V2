@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LegalNav, LegalSection, LegalFooter } from "@/components/legal";
 
 export const dynamic = "force-static";
 
@@ -8,27 +9,25 @@ export const metadata: Metadata = {
   description: "Terms governing your use of the Kommand platform.",
 };
 
-const YEAR = new Date().getFullYear();
-
 export default function TermsPage(): React.ReactElement {
   return (
     <div className="min-h-screen bg-white text-gray-900">
-      <Nav />
+      <LegalNav />
 
       <main className="max-w-3xl mx-auto px-6 py-16">
         <h1 className="text-4xl font-bold mb-2">Terms of Service</h1>
         <p className="text-gray-400 text-sm mb-12">Last updated: 20 March 2026</p>
 
         <div className="prose-kommand">
-          <Section title="1. Agreement">
+          <LegalSection title="1. Agreement">
             <p>
               By creating an account or using Kommand (&ldquo;the Service&rdquo;), you agree to these Terms
               of Service (&ldquo;Terms&rdquo;). If you are using the Service on behalf of a business, you
               represent that you have authority to bind that entity to these Terms.
             </p>
-          </Section>
+          </LegalSection>
 
-          <Section title="2. Service description">
+          <LegalSection title="2. Service description">
             <p>
               Kommand is an autonomous AI agent that helps small business owners manage operations through
               WhatsApp. The agent connects to your Shopify store, Xero accounting, and other services via
@@ -40,18 +39,18 @@ export default function TermsPage(): React.ReactElement {
               outputs (analysis, recommendations, generated files) should be reviewed before acting on them.
               You remain responsible for all business decisions.
             </p>
-          </Section>
+          </LegalSection>
 
-          <Section title="3. Accounts and access">
+          <LegalSection title="3. Accounts and access">
             <ul className="list-disc pl-5 space-y-2 mt-2">
               <li>You must provide accurate information when creating an account.</li>
               <li>You are responsible for maintaining the security of your account credentials.</li>
               <li>You must be at least 18 years old to use the Service.</li>
               <li>One account per business entity. Multiple team seats are available on the Pro plan.</li>
             </ul>
-          </Section>
+          </LegalSection>
 
-          <Section title="4. Shopify App Store">
+          <LegalSection title="4. Shopify App Store">
             <p>
               Kommand is distributed via the Shopify App Store. Your use of Kommand is also subject to
               the{" "}
@@ -61,9 +60,9 @@ export default function TermsPage(): React.ReactElement {
               and the Shopify API License and Terms of Use. In the event of conflict between these Terms
               and Shopify&rsquo;s terms, Shopify&rsquo;s terms prevail for matters relating to the Shopify platform.
             </p>
-          </Section>
+          </LegalSection>
 
-          <Section title="5. Billing and plans">
+          <LegalSection title="5. Billing and plans">
             <ul className="list-disc pl-5 space-y-2 mt-2">
               <li>Kommand offers a <strong>14-day free trial</strong> on all plans. No credit card is required to start.</li>
               <li>After the trial, billing is monthly via Shopify Billing API or Stripe (for direct sign-ups).</li>
@@ -75,9 +74,9 @@ export default function TermsPage(): React.ReactElement {
               <li>An &ldquo;agent run&rdquo; is one inbound message that triggers the agent loop, regardless of
                 how many tool calls the agent makes internally.</li>
             </ul>
-          </Section>
+          </LegalSection>
 
-          <Section title="6. Acceptable use">
+          <LegalSection title="6. Acceptable use">
             <p>You agree not to:</p>
             <ul className="list-disc pl-5 space-y-2 mt-2">
               <li>Use the Service for any unlawful purpose or to violate any applicable laws.</li>
@@ -87,9 +86,9 @@ export default function TermsPage(): React.ReactElement {
               <li>Exceed your plan&rsquo;s usage limits through automated means or circumvention.</li>
               <li>Resell, sublicense, or provide the Service to third parties without our written consent.</li>
             </ul>
-          </Section>
+          </LegalSection>
 
-          <Section title="7. Data and privacy">
+          <LegalSection title="7. Data and privacy">
             <p>
               Our handling of your data is governed by our{" "}
               <Link href="/privacy" className="text-[#534AB7] hover:underline">
@@ -98,9 +97,9 @@ export default function TermsPage(): React.ReactElement {
               , which is incorporated into these Terms by reference. By using the Service, you consent to
               the data practices described in the Privacy Policy.
             </p>
-          </Section>
+          </LegalSection>
 
-          <Section title="8. Intellectual property">
+          <LegalSection title="8. Intellectual property">
             <ul className="list-disc pl-5 space-y-2 mt-2">
               <li>
                 <strong>Your data:</strong> You retain all rights to your business data. We claim no
@@ -116,9 +115,9 @@ export default function TermsPage(): React.ReactElement {
                 using your data belong to you. We retain no rights to agent outputs.
               </li>
             </ul>
-          </Section>
+          </LegalSection>
 
-          <Section title="9. Limitations and disclaimers">
+          <LegalSection title="9. Limitations and disclaimers">
             <ul className="list-disc pl-5 space-y-2 mt-2">
               <li>
                 The Service uses AI to generate analysis, recommendations, and actions. AI outputs may
@@ -137,9 +136,9 @@ export default function TermsPage(): React.ReactElement {
                 in advance where possible.
               </li>
             </ul>
-          </Section>
+          </LegalSection>
 
-          <Section title="10. Termination">
+          <LegalSection title="10. Termination">
             <ul className="list-disc pl-5 space-y-2 mt-2">
               <li>You may cancel your subscription and delete your account at any time from the dashboard.</li>
               <li>
@@ -152,89 +151,33 @@ export default function TermsPage(): React.ReactElement {
               </li>
               <li>Sections that should survive termination (liability, IP, disputes) survive.</li>
             </ul>
-          </Section>
+          </LegalSection>
 
-          <Section title="11. Changes to these Terms">
+          <LegalSection title="11. Changes to these Terms">
             <p>
               We may update these Terms from time to time. Material changes will be communicated via the
               dashboard and/or email at least 30 days before taking effect. Continued use of the Service
               after changes take effect constitutes acceptance.
             </p>
-          </Section>
+          </LegalSection>
 
-          <Section title="12. Governing law">
+          <LegalSection title="12. Governing law">
             <p>
               These Terms are governed by the laws of England and Wales. Disputes will be resolved in the
               courts of England and Wales, unless you are a consumer entitled to bring proceedings in your
               local courts.
             </p>
-          </Section>
+          </LegalSection>
 
-          <Section title="13. Contact">
+          <LegalSection title="13. Contact">
             <p>
               For questions about these Terms, contact us at <strong>legal@kommand.dev</strong>.
             </p>
-          </Section>
+          </LegalSection>
         </div>
       </main>
 
       <LegalFooter />
     </div>
-  );
-}
-
-// ─── Shared components ────────────────────────────────────────────────────────
-
-function Nav(): React.ReactElement {
-  return (
-    <nav className="sticky top-0 z-50 border-b border-gray-100 bg-white/80 backdrop-blur-md">
-      <div className="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between">
-        <Link href="/" className="flex items-center gap-2">
-          <div className="w-7 h-7 rounded-lg bg-[#534AB7] flex items-center justify-center">
-            <span className="text-white text-xs font-bold">K</span>
-          </div>
-          <span className="font-semibold text-gray-900 tracking-tight">Kommand</span>
-        </Link>
-        <Link
-          href="/"
-          className="text-sm text-gray-400 hover:text-gray-900 transition-colors"
-        >
-          Back to home
-        </Link>
-      </div>
-    </nav>
-  );
-}
-
-function Section({
-  title,
-  children,
-}: {
-  title: string;
-  children: React.ReactNode;
-}): React.ReactElement {
-  return (
-    <section className="mb-10">
-      <h3 className="text-xl font-bold text-gray-900 mb-3">{title}</h3>
-      <div className="text-gray-600 text-[15px] leading-relaxed space-y-3">{children}</div>
-    </section>
-  );
-}
-
-function LegalFooter(): React.ReactElement {
-  return (
-    <footer className="border-t border-gray-100 py-8">
-      <div className="max-w-3xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-        <p className="text-gray-400 text-sm">&copy; {YEAR} Kommand</p>
-        <div className="flex gap-5">
-          <Link href="/privacy" className="text-gray-400 hover:text-gray-900 text-sm transition-colors">
-            Privacy
-          </Link>
-          <Link href="/terms" className="text-gray-400 hover:text-gray-900 text-sm transition-colors">
-            Terms
-          </Link>
-        </div>
-      </div>
-    </footer>
   );
 }
