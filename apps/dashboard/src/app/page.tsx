@@ -562,6 +562,18 @@ function Footer(): React.ReactElement {
         </p>
         <div className="flex gap-5">
           <Link
+            href="/privacy"
+            className="text-gray-600 hover:text-gray-300 text-sm transition-colors"
+          >
+            Privacy
+          </Link>
+          <Link
+            href="/terms"
+            className="text-gray-600 hover:text-gray-300 text-sm transition-colors"
+          >
+            Terms
+          </Link>
+          <Link
             href="/sign-in"
             className="text-gray-600 hover:text-gray-300 text-sm transition-colors"
           >

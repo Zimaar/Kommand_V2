@@ -1,6 +1,40 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
-import { formatForWhatsApp, fileUrlToFilename } from "./channel-utils.js";
+import { sanitizeOutput, formatForWhatsApp, fileUrlToFilename } from "./channel-utils.js";
+
+describe("sanitizeOutput", () => {
+  it("strips <business_data> blocks", () => {
+    const input = 'Here is your data: <business_data source="shopify">secret</business_data> Done.';
+    assert.equal(sanitizeOutput(input), "Here is your data:  Done.");
+  });
+
+  it("strips <business_data> blocks case-insensitively", () => {
+    const input = "<BUSINESS_DATA>leak</BUSINESS_DATA>";
+    assert.equal(sanitizeOutput(input), "");
+  });
+
+  it("strips residual HTML/XML tags", () => {
+    assert.equal(sanitizeOutput("<b>bold</b>"), "bold");
+    assert.equal(sanitizeOutput("<script>alert(1)</script>"), "alert(1)");
+  });
+
+  it("strips null bytes and non-printable control characters", () => {
+    assert.equal(sanitizeOutput("hello\x00world"), "helloworld");
+    assert.equal(sanitizeOutput("hello\x01\x1Fworld"), "helloworld");
+  });
+
+  it("preserves newlines, tabs, and carriage returns", () => {
+    assert.equal(sanitizeOutput("line1\nline2\ttabbed\r\n"), "line1\nline2\ttabbed\r\n");
+  });
+
+  it("returns clean text unchanged", () => {
+    assert.equal(sanitizeOutput("Your revenue is $1,234 this week."), "Your revenue is $1,234 this week.");
+  });
+
+  it("returns empty string unchanged", () => {
+    assert.equal(sanitizeOutput(""), "");
+  });
+});
 
 describe("formatForWhatsApp", () => {
   it("converts **bold** to *bold*", () => {

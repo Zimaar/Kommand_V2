@@ -6,7 +6,7 @@
  * - Any remaining HTML/XML tags (shouldn't appear in WhatsApp output)
  * - Null bytes and non-printable control characters (preserves \n, \t, \r)
  *
- * This is the output sanitization layer described in SECURITY.md — a defence-in-depth
+ * This is the output sanitization layer described in specs/SECURITY.md — a defence-in-depth
  * measure against prompt-injection content leaking into messages sent to the owner.
  */
 export function sanitizeOutput(text: string): string {
