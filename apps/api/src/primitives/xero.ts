@@ -43,18 +43,30 @@ async function xeroApi(input: unknown, tenantId: string): Promise<PrimitiveRespo
   const { method, path, body } = parsed.data;
 
   // 2. Look up active Xero connection for this tenant
-  const conn = await db.query.accountingConnections.findFirst({
-    where: and(
-      eq(accountingConnections.tenantId, tenantId),
-      eq(accountingConnections.platform, "xero"),
-      eq(accountingConnections.isActive, true)
-    ),
-  });
+  const rows = await db
+    .select({ orgId: accountingConnections.orgId })
+    .from(accountingConnections)
+    .where(
+      and(
+        eq(accountingConnections.tenantId, tenantId),
+        eq(accountingConnections.platform, "xero"),
+        eq(accountingConnections.isActive, true)
+      )
+    )
+    .limit(1);
+  const conn = rows[0] ?? null;
 
   if (!conn) {
     return {
       success: false,
       error: "No active Xero connection found. Please connect your Xero account first.",
+    };
+  }
+
+  if (!conn.orgId) {
+    return {
+      success: false,
+      error: "Xero connection is missing organisation ID. Please reconnect Xero from the dashboard.",
     };
   }
 
@@ -68,7 +80,7 @@ async function xeroApi(input: unknown, tenantId: string): Promise<PrimitiveRespo
   }
 
   // 4. Execute request with one-time 429 retry
-  return callXero(method, path, body, accessToken, conn.orgId ?? "", false);
+  return callXero(method, path, body, accessToken, conn.orgId, false);
 }
 
 // ─── HTTP layer ───────────────────────────────────────────────────────────────

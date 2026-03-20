@@ -48,6 +48,15 @@ The `process.env["DATABASE_URL"] ??=` / `REDIS_URL` / `ENCRYPTION_KEY` defaults 
 
 ## M7 — Xero
 
+### Double DB lookup in xero_api primitive
+**File:** `apps/api/src/primitives/xero.ts`
+
+`xeroApi` queries `accountingConnections` to get `orgId`, then `getValidXeroToken` queries the exact same row internally. Two indexed reads per agent call for the same record.
+
+**Fix:** Change `getValidXeroToken` to return `{ token: string; orgId: string }` so the primitive can do a single lookup. Requires updating all callers of `getValidXeroToken`.
+
+---
+
 ### Single Xero org assumption — no multi-org selection
 **File:** `apps/api/src/routes/auth.ts` → `xero/callback`
 
