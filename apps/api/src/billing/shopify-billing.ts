@@ -129,9 +129,10 @@ export async function verifyShopifyCharge(
 
   const charge = data.recurring_application_charge;
 
-  // Look up our subscription record
+  // Look up our subscription record — include tenantId to prevent cross-tenant activation
   const sub = await db.query.subscriptions.findFirst({
     where: and(
+      eq(subscriptions.tenantId, tenantId),
       eq(subscriptions.provider, "shopify"),
       eq(subscriptions.externalId, String(charge.id))
     ),
