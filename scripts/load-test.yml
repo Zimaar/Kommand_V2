@@ -1,0 +1,86 @@
+# Artillery load test — simulates 50 concurrent tenants messaging via WhatsApp webhook
+# Usage: npx artillery run scripts/load-test.yml
+# Requires: API server running with DATABASE_URL, REDIS_URL, ANTHROPIC_API_KEY
+#
+# NOTE: This test hits real endpoints. For a meaningful test against the agent loop,
+# the WhatsApp webhook signature verification must be disabled or a valid HMAC
+# must be computed per request. For infrastructure load testing (DB, Redis, Fastify),
+# the /api/health and /api/dashboard/* endpoints are used instead.
+
+config:
+  target: "http://localhost:3000"
+  phases:
+    # Warm-up: ramp from 0 to 10 users over 1 minute
+    - duration: 60
+      arrivalRate: 1
+      rampTo: 10
+      name: "Warm-up"
+    # Sustained load: 50 concurrent virtual users for 8 minutes
+    - duration: 480
+      arrivalRate: 50
+      name: "Sustained load"
+    # Cool-down: ramp down over 1 minute
+    - duration: 60
+      arrivalRate: 50
+      rampTo: 1
+      name: "Cool-down"
+  defaults:
+    headers:
+      Content-Type: "application/json"
+  # Thresholds — fail the test if these are violated
+  ensure:
+    thresholds:
+      - http.response_time.p95: 8000
+      - http.codes.5xx: 0
+
+scenarios:
+  # Scenario 1: Health check (lightweight — validates Fastify throughput)
+  - name: "Health check"
+    weight: 30
+    flow:
+      - get:
+          url: "/api/health"
+
+  # Scenario 2: Dashboard API (DB-heavy — validates connection pooling)
+  - name: "Dashboard me + activity"
+    weight: 40
+    flow:
+      - get:
+          url: "/api/dashboard/me"
+          headers:
+            x-tenant-id: "{{ $randomString() }}"
+      - think: 2
+      - get:
+          url: "/api/dashboard/activity"
+          headers:
+            x-tenant-id: "{{ $randomString() }}"
+      - think: 2
+      - get:
+          url: "/api/dashboard/usage"
+          headers:
+            x-tenant-id: "{{ $randomString() }}"
+
+  # Scenario 3: Billing checkout (validates Stripe integration path)
+  - name: "Billing checkout"
+    weight: 10
+    flow:
+      - post:
+          url: "/billing/checkout"
+          headers:
+            x-tenant-id: "{{ $randomString() }}"
+          json:
+            plan: "starter"
+
+  # Scenario 4: Connections list (validates parallel DB queries)
+  - name: "Connections"
+    weight: 20
+    flow:
+      - get:
+          url: "/api/dashboard/connections"
+          headers:
+            x-tenant-id: "{{ $randomString() }}"
+      - think: 1
+      - get:
+          url: "/api/dashboard/messages?limit=50"
+          headers:
+            x-tenant-id: "{{ $randomString() }}"

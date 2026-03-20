@@ -5,9 +5,12 @@ import * as schema from "./schema.js";
 
 const pool = new pg.Pool({
   connectionString: config.DATABASE_URL,
-  max: 20,
+  // 50 concurrent tenants × ~4 parallel queries each = ~200 peak queries.
+  // With 30 connections and pipelining, this handles the load without
+  // exhausting Supabase's connection limit (typically 60–200 depending on plan).
+  max: 30,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 5000,
 });
 
 export const db = drizzle(pool, { schema });

@@ -18,20 +18,52 @@ import type {
 } from "@kommand/shared";
 import { CONVERSATION_HISTORY_LENGTH } from "../config.js";
 import { searchMemories } from "../utils/embeddings.js";
+import { redis } from "../lib/redis.js";
+
+// Cache key helpers
+const TENANT_CACHE_TTL = 120; // 2 minutes — short enough to reflect plan changes quickly
+
+async function getCachedTenantData(tenantId: string) {
+  try {
+    const cached = await redis.get(`ctx:${tenantId}`);
+    if (cached) return JSON.parse(cached) as {
+      tenant: (typeof tenants.$inferSelect)[];
+      stores: (typeof stores.$inferSelect)[];
+      connections: (typeof accountingConnections.$inferSelect)[];
+    };
+  } catch { /* cache miss — fall through to DB */ }
+  return null;
+}
+
+async function setCachedTenantData(tenantId: string, data: unknown) {
+  await redis.set(`ctx:${tenantId}`, JSON.stringify(data), "EX", TENANT_CACHE_TTL).catch(() => {});
+}
 
 export async function buildContext(tenantId: string, currentMessage?: string): Promise<AgentContext> {
-  const [tenant, storeRows, connectionRows, historyRows] = await Promise.all([
-    db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1),
-    db.select().from(stores).where(and(eq(stores.tenantId, tenantId), eq(stores.isActive, true))),
-    db
-      .select()
-      .from(accountingConnections)
-      .where(
-        and(
-          eq(accountingConnections.tenantId, tenantId),
-          eq(accountingConnections.isActive, true)
-        )
-      ),
+  // Tenant, stores, connections are relatively stable — cache in Redis
+  const cached = await getCachedTenantData(tenantId);
+
+  const [tenantData, historyRows] = await Promise.all([
+    cached
+      ? Promise.resolve(cached)
+      : Promise.all([
+          db.select().from(tenants).where(eq(tenants.id, tenantId)).limit(1),
+          db.select().from(stores).where(and(eq(stores.tenantId, tenantId), eq(stores.isActive, true))),
+          db
+            .select()
+            .from(accountingConnections)
+            .where(
+              and(
+                eq(accountingConnections.tenantId, tenantId),
+                eq(accountingConnections.isActive, true)
+              )
+            ),
+        ]).then(([t, s, c]) => {
+          const data = { tenant: t, stores: s, connections: c };
+          setCachedTenantData(tenantId, data);
+          return data;
+        }),
+    // Conversation history is always fresh — never cached
     db
       .select()
       .from(messages)
@@ -39,6 +71,8 @@ export async function buildContext(tenantId: string, currentMessage?: string): P
       .orderBy(desc(messages.createdAt))
       .limit(CONVERSATION_HISTORY_LENGTH),
   ]);
+
+  const { tenant, stores: storeRows, connections: connectionRows } = tenantData;
 
   // Vector similarity search using the current message as query (falls back to recency if no embedding key)
   const memoryRows = await searchMemories(tenantId, currentMessage ?? "");

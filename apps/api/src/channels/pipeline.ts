@@ -4,15 +4,9 @@ import { channels, messages } from "../db/schema.js";
 import { runAgent } from "../agent/loop.js";
 import { getPendingAction } from "../agent/confirmation.js";
 import { checkBilling } from "../billing/guard.js";
+import { redis } from "../lib/redis.js";
 import type { ChannelAdapter } from "./types.js";
 import type { ChannelType } from "@kommand/shared";
-
-// In-memory dedup set (swap for Redis SET in production)
-const processedMessages = new Map<string, number>();
-const DEDUP_TTL_MS = 60 * 60 * 1000; // 1 hour
-
-// In-memory rate limit counters (swap for Redis in production)
-const rateLimitCounters = new Map<string, { count: number; windowStart: number }>();
 
 const MAX_MESSAGE_LENGTH = 4000;
 const RATE_LIMIT_PER_MINUTE = 10;
@@ -61,9 +55,8 @@ async function processSingleMessage(
   channelType: string,
   parsed: import("@kommand/shared").InboundMessage
 ): Promise<void> {
-  // 2. Deduplicate by channelMsgId
-  if (isDuplicate(parsed.channelMessageId)) {
-    console.log(`[pipeline] Duplicate message: ${parsed.channelMessageId}`);
+  // 2. Deduplicate by channelMsgId (Redis SET with TTL — works across instances)
+  if (await isDuplicate(parsed.channelMessageId)) {
     return;
   }
 
@@ -90,8 +83,8 @@ async function processSingleMessage(
     channelMsgId: parsed.channelMessageId,
   });
 
-  // 6. Check rate limit
-  if (!checkRateLimit(tenantId)) {
+  // 6. Check rate limit (Redis-backed — atomic, works across instances)
+  if (!(await checkRateLimit(tenantId))) {
     await adapter.sendText(
       tenantId,
       "You're sending messages too fast. Please wait a moment and try again."
@@ -150,6 +143,11 @@ async function resolveTenant(
   channelType: ChannelType,
   identifier: string
 ): Promise<string | null> {
+  // Check Redis cache first
+  const cacheKey = `tenant:${channelType}:${identifier}`;
+  const cached = await redis.get(cacheKey).catch(() => null);
+  if (cached) return cached;
+
   const rows = await db
     .select({ tenantId: channels.tenantId })
     .from(channels)
@@ -162,59 +160,54 @@ async function resolveTenant(
     )
     .limit(1);
 
-  return rows[0]?.tenantId ?? null;
-}
+  const tenantId = rows[0]?.tenantId ?? null;
 
-function isDuplicate(channelMsgId: string): boolean {
-  const now = Date.now();
-
-  // Cleanup old entries periodically
-  if (processedMessages.size > 1000) {
-    for (const [key, timestamp] of processedMessages) {
-      if (now - timestamp > DEDUP_TTL_MS) {
-        processedMessages.delete(key);
-      }
-    }
+  // Cache for 5 minutes — channel→tenant mapping is stable
+  if (tenantId) {
+    await redis.set(cacheKey, tenantId, "EX", 300).catch(() => {});
   }
 
-  if (processedMessages.has(channelMsgId)) {
+  return tenantId;
+}
+
+/**
+ * Redis-backed dedup — SETNX with 1-hour TTL.
+ * Returns true if this message was already processed.
+ */
+async function isDuplicate(channelMsgId: string): Promise<boolean> {
+  try {
+    // SET key value NX EX ttl — returns "OK" if set, null if key already exists
+    const result = await redis.set(`dedup:${channelMsgId}`, "1", "EX", 3600, "NX");
+    return result === null; // null = key existed = duplicate
+  } catch {
+    // Redis down — fall through (allow processing, accept potential dupe)
+    return false;
+  }
+}
+
+/**
+ * Redis-backed rate limiting using atomic INCR + TTL windows.
+ * Returns true if under both minute and hour limits.
+ */
+async function checkRateLimit(tenantId: string): Promise<boolean> {
+  try {
+    const minuteKey = `rl:${tenantId}:m:${Math.floor(Date.now() / 60000)}`;
+    const hourKey = `rl:${tenantId}:h:${Math.floor(Date.now() / 3600000)}`;
+
+    // Atomic increment + set TTL if new key (pipeline for single round-trip)
+    const pipeline = redis.pipeline();
+    pipeline.incr(minuteKey);
+    pipeline.expire(minuteKey, 60);
+    pipeline.incr(hourKey);
+    pipeline.expire(hourKey, 3600);
+    const results = await pipeline.exec();
+
+    const minuteCount = (results?.[0]?.[1] as number) ?? 0;
+    const hourCount = (results?.[2]?.[1] as number) ?? 0;
+
+    return minuteCount <= RATE_LIMIT_PER_MINUTE && hourCount <= RATE_LIMIT_PER_HOUR;
+  } catch {
+    // Redis down — allow the request through
     return true;
   }
-
-  processedMessages.set(channelMsgId, now);
-  return false;
-}
-
-function checkRateLimit(tenantId: string): boolean {
-  const now = Math.floor(Date.now() / 1000);
-  const minuteKey = `${tenantId}:minute`;
-  const hourKey = `${tenantId}:hour`;
-
-  // Check both limits before incrementing either
-  const minuteCounter = rateLimitCounters.get(minuteKey);
-  const minuteActive = minuteCounter && now - minuteCounter.windowStart < 60;
-  if (minuteActive && minuteCounter.count >= RATE_LIMIT_PER_MINUTE) {
-    return false;
-  }
-
-  const hourCounter = rateLimitCounters.get(hourKey);
-  const hourActive = hourCounter && now - hourCounter.windowStart < 3600;
-  if (hourActive && hourCounter.count >= RATE_LIMIT_PER_HOUR) {
-    return false;
-  }
-
-  // Increment only after both checks pass
-  if (minuteActive) {
-    minuteCounter.count++;
-  } else {
-    rateLimitCounters.set(minuteKey, { count: 1, windowStart: now });
-  }
-
-  if (hourActive) {
-    hourCounter.count++;
-  } else {
-    rateLimitCounters.set(hourKey, { count: 1, windowStart: now });
-  }
-
-  return true;
 }
